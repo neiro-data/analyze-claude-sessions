@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS claude.sessions (
     duration_seconds    numeric(14, 3)
         GENERATED ALWAYS AS (EXTRACT(EPOCH FROM (last_event_at - first_event_at))) STORED,
     models              text[]      NOT NULL DEFAULT '{}',
+    has_subagent        boolean     NOT NULL DEFAULT false,
+    first_model         text,
     created_at          timestamptz NOT NULL DEFAULT now(),
     updated_at          timestamptz NOT NULL DEFAULT now()
 );
@@ -164,12 +166,19 @@ CREATE TABLE IF NOT EXISTS claude.api_calls (
     call_index          integer     NOT NULL CHECK (call_index > 0),
     called_at           timestamptz NOT NULL,
     message_uuid        uuid        NOT NULL,
-    parent_uuid         uuid,
     input_tokens        integer     NOT NULL DEFAULT 0 CHECK (input_tokens       >= 0),
     cache_write_tokens  integer     NOT NULL DEFAULT 0 CHECK (cache_write_tokens >= 0),
     cache_read_tokens   integer     NOT NULL DEFAULT 0 CHECK (cache_read_tokens  >= 0),
     output_tokens       integer     NOT NULL DEFAULT 0 CHECK (output_tokens      >= 0),
     delta_seconds       integer     NOT NULL DEFAULT 0,
+    delta_seconds_global integer    NOT NULL DEFAULT 0,
+    agent                text,
+    agent_type           text,
+    depth                integer    NOT NULL DEFAULT 0 CHECK (depth >= 0),
+    parent_agent         text,
+    model                text,
+    tool_use_id          text,
+    description          text,
     total_input_tokens  integer
         GENERATED ALWAYS AS (input_tokens + cache_write_tokens + cache_read_tokens) STORED,
     created_at          timestamptz NOT NULL DEFAULT now(),
@@ -179,9 +188,11 @@ CREATE TABLE IF NOT EXISTS claude.api_calls (
 CREATE INDEX IF NOT EXISTS api_calls_transcript_idx ON claude.api_calls (transcript_id, call_index);
 CREATE INDEX IF NOT EXISTS api_calls_session_idx    ON claude.api_calls (session_id);
 CREATE INDEX IF NOT EXISTS api_calls_called_at_idx  ON claude.api_calls (called_at);
+CREATE INDEX IF NOT EXISTS api_calls_depth_idx      ON claude.api_calls (session_id) WHERE depth > 0;
+CREATE INDEX IF NOT EXISTS api_calls_model_idx      ON claude.api_calls (model);
 
 COMMENT ON TABLE claude.api_calls IS
-    'Columns call_index..delta_seconds map 1:1 onto the CSV produced by '
+    'Columns call_index..description map 1:1 onto the CSV produced by '
     'cache_report_per_call_timing.sh.';
 
 -- ---------------------------------------------------------------------------
@@ -195,6 +206,18 @@ CREATE TABLE IF NOT EXISTS claude.parquet_exports (
     compression     text        NOT NULL DEFAULT 'zstd',
     row_count       bigint      NOT NULL DEFAULT 0,
     exported_at     timestamptz NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------------
+-- Audit: one row per loader run that upserts sessions
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS claude.interactions_upload (
+    upload_id                bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    run_id                   bigint      REFERENCES claude.ingest_runs (run_id) ON DELETE SET NULL,
+    "timestamp"               timestamptz NOT NULL DEFAULT now(),
+    time_spent                integer     NOT NULL CHECK (time_spent >= 0),
+    number_new_sessions       integer     NOT NULL DEFAULT 0,
+    number_updated_sessions   integer     NOT NULL DEFAULT 0
 );
 
 -- ---------------------------------------------------------------------------

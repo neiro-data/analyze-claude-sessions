@@ -17,12 +17,19 @@ _STAGING_COLUMNS = (
     "call_index",
     "called_at",
     "message_uuid",
-    "parent_uuid",
     "input_tokens",
     "cache_write_tokens",
     "cache_read_tokens",
     "output_tokens",
     "delta_seconds",
+    "delta_seconds_global",
+    "agent",
+    "agent_type",
+    "depth",
+    "parent_agent",
+    "model",
+    "tool_use_id",
+    "description",
 )
 
 _REQUIRED_CSV_COLUMNS = frozenset(
@@ -35,6 +42,10 @@ _REQUIRED_CSV_COLUMNS = frozenset(
         "cache_read_tokens",
         "output_tokens",
         "delta_seconds",
+        "delta_seconds_global",
+        "depth",
+        "model",
+        "agent_type",
     }
 )
 
@@ -44,6 +55,17 @@ _INT_COLUMNS = (
     "cache_read_tokens",
     "output_tokens",
     "delta_seconds",
+    "delta_seconds_global",
+    "depth",
+)
+
+_TEXT_COLUMNS = (
+    "agent",
+    "agent_type",
+    "parent_agent",
+    "model",
+    "tool_use_id",
+    "description",
 )
 
 
@@ -52,25 +74,18 @@ class LoadError(RuntimeError):
 
 
 def read_report_csv(report: CsvReport) -> pl.DataFrame:
-    """Read a report CSV into the staging column layout.
-
-    ``parentUuid`` is optional: older revisions of the report script did not emit
-    it, and those CSVs should still load.
-    """
+    """Read a report CSV into the staging column layout."""
     frame = pl.read_csv(report.path, infer_schema_length=0)
     missing = _REQUIRED_CSV_COLUMNS - set(frame.columns)
     if missing:
         raise LoadError(f"{report.path.name} is missing columns: {sorted(missing)}")
 
-    if "parentUuid" not in frame.columns:
-        frame = frame.with_columns(pl.lit(None, dtype=pl.String).alias("parentUuid"))
-
     return frame.select(
         pl.col("call").cast(pl.Int32).alias("call_index"),
         pl.col("timestamp").str.to_datetime(time_unit="us", time_zone="UTC").alias("called_at"),
         _blank_to_null("uuid").alias("message_uuid"),
-        _blank_to_null("parentUuid").alias("parent_uuid"),
         *(pl.col(name).cast(pl.Int64).alias(name) for name in _INT_COLUMNS),
+        *(_blank_to_null(name).alias(name) for name in _TEXT_COLUMNS),
     ).sort("call_index")
 
 
@@ -104,13 +119,16 @@ def upsert_session(
     session_id: UUID,
     project_id: int,
     meta: SessionMetadata,
-) -> None:
+) -> bool:
     """Ensure the parent session row exists.
 
     Subagent transcripts share their parent's session_id and carry no ai_title, so
     session-level fields are only ever filled in, never cleared.
+
+    Returns True when this call inserted a brand-new session row, False when it
+    updated an existing one.
     """
-    conn.execute(
+    row = conn.execute(
         """
         INSERT INTO claude.sessions (session_id, project_id, ai_title, cwd)
         VALUES (%s, %s, %s, %s)
@@ -119,9 +137,13 @@ def upsert_session(
             ai_title   = COALESCE(EXCLUDED.ai_title, claude.sessions.ai_title),
             cwd        = COALESCE(EXCLUDED.cwd, claude.sessions.cwd),
             updated_at = now()
+        RETURNING (xmax = 0) AS inserted
         """,
         (str(session_id), project_id, meta.ai_title, meta.cwd),
-    )
+    ).fetchone()
+    if row is None:  # pragma: no cover - RETURNING always yields a row
+        raise LoadError(f"Could not upsert session {session_id}")
+    return bool(row["inserted"])
 
 
 def upsert_transcript(
@@ -258,15 +280,22 @@ def load_api_calls(
     conn.execute(
         """
         CREATE TEMP TABLE tmp_api_calls (
-            call_index          integer,
-            called_at           timestamptz,
-            message_uuid        uuid,
-            parent_uuid         uuid,
-            input_tokens        bigint,
-            cache_write_tokens  bigint,
-            cache_read_tokens   bigint,
-            output_tokens       bigint,
-            delta_seconds       bigint
+            call_index            integer,
+            called_at             timestamptz,
+            message_uuid          uuid,
+            input_tokens          bigint,
+            cache_write_tokens    bigint,
+            cache_read_tokens     bigint,
+            output_tokens         bigint,
+            delta_seconds         bigint,
+            delta_seconds_global  bigint,
+            agent                 text,
+            agent_type            text,
+            depth                 bigint,
+            parent_agent          text,
+            model                 text,
+            tool_use_id           text,
+            description           text
         ) ON COMMIT DROP
         """
     )
@@ -280,26 +309,35 @@ def load_api_calls(
         """
         INSERT INTO claude.api_calls (
             transcript_id, session_id, csv_id, call_index, called_at, message_uuid,
-            parent_uuid, input_tokens, cache_write_tokens, cache_read_tokens,
-            output_tokens, delta_seconds
+            input_tokens, cache_write_tokens, cache_read_tokens, output_tokens,
+            delta_seconds, delta_seconds_global, agent, agent_type, depth,
+            parent_agent, model, tool_use_id, description
         )
         SELECT DISTINCT ON (t.message_uuid)
-            %s, %s, %s, t.call_index, t.called_at, t.message_uuid, t.parent_uuid,
-            t.input_tokens, t.cache_write_tokens, t.cache_read_tokens,
-            t.output_tokens, t.delta_seconds
+            %s, %s, %s, t.call_index, t.called_at, t.message_uuid,
+            t.input_tokens, t.cache_write_tokens, t.cache_read_tokens, t.output_tokens,
+            t.delta_seconds, t.delta_seconds_global, t.agent, t.agent_type, t.depth,
+            t.parent_agent, t.model, t.tool_use_id, t.description
         FROM tmp_api_calls t
         WHERE t.message_uuid IS NOT NULL
         ORDER BY t.message_uuid, t.call_index
         ON CONFLICT (transcript_id, message_uuid) DO UPDATE SET
-            csv_id             = EXCLUDED.csv_id,
-            call_index         = EXCLUDED.call_index,
-            called_at          = EXCLUDED.called_at,
-            parent_uuid        = EXCLUDED.parent_uuid,
-            input_tokens       = EXCLUDED.input_tokens,
-            cache_write_tokens = EXCLUDED.cache_write_tokens,
-            cache_read_tokens  = EXCLUDED.cache_read_tokens,
-            output_tokens      = EXCLUDED.output_tokens,
-            delta_seconds      = EXCLUDED.delta_seconds
+            csv_id                = EXCLUDED.csv_id,
+            call_index            = EXCLUDED.call_index,
+            called_at             = EXCLUDED.called_at,
+            input_tokens          = EXCLUDED.input_tokens,
+            cache_write_tokens    = EXCLUDED.cache_write_tokens,
+            cache_read_tokens     = EXCLUDED.cache_read_tokens,
+            output_tokens         = EXCLUDED.output_tokens,
+            delta_seconds         = EXCLUDED.delta_seconds,
+            delta_seconds_global  = EXCLUDED.delta_seconds_global,
+            agent                 = EXCLUDED.agent,
+            agent_type            = EXCLUDED.agent_type,
+            depth                 = EXCLUDED.depth,
+            parent_agent          = EXCLUDED.parent_agent,
+            model                 = EXCLUDED.model,
+            tool_use_id           = EXCLUDED.tool_use_id,
+            description           = EXCLUDED.description
         """,
         (transcript_id, str(session_id), csv_id),
     )
@@ -354,3 +392,42 @@ def refresh_rollups(conn: Connection[Any]) -> None:
          WHERE agg.project_id = p.project_id
         """
     )
+    conn.execute(
+        """
+        UPDATE claude.sessions s
+           SET has_subagent = agg.has_sub,
+               first_model  = agg.first_model,
+               updated_at   = now()
+          FROM (
+              SELECT session_id,
+                     bool_or(depth > 0) AS has_sub,
+                     (array_agg(model ORDER BY called_at, call_index)
+                        FILTER (WHERE model IS NOT NULL))[1] AS first_model
+                FROM claude.api_calls
+               GROUP BY session_id
+          ) AS agg
+         WHERE agg.session_id = s.session_id
+        """
+    )
+
+
+def record_interactions_upload(
+    conn: Connection[Any],
+    *,
+    run_id: int | None,
+    time_spent: int,
+    new_sessions: int,
+    updated_sessions: int,
+) -> int:
+    row = conn.execute(
+        """
+        INSERT INTO claude.interactions_upload
+            (run_id, time_spent, number_new_sessions, number_updated_sessions)
+        VALUES (%s, %s, %s, %s)
+        RETURNING upload_id
+        """,
+        (run_id, time_spent, new_sessions, updated_sessions),
+    ).fetchone()
+    if row is None:  # pragma: no cover
+        raise LoadError("Could not record interactions upload")
+    return int(row["upload_id"])

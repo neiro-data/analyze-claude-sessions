@@ -28,3 +28,25 @@ Steps:
 - Verified: 250/250 transcripts, 5,029 calls, 0 failures; Parquet export + `COPY FROM`
   round-trip matches; ruff + mypy --strict + 21 tests clean.
 - Wrote README.md and HANDOFF.md.
+
+## add-agent-columns-and-sessions-tables (2026-08-09)
+
+Branch purpose: support the new per-call CSV format (parentUuid → agent/agent_type/depth/
+parent_agent/model/tool_use_id/description/delta_seconds_global) and add session-level
+subagent/model tracking + an upload audit table.
+
+- Full pipeline run (user-confirmed): architect-orchestrator plan → python-pro implement →
+  python-conventions → test-automator → code-reviewer.
+- Recreated `claude.api_calls` for the new columns (sql/002 + new sql/004_agent_columns.sql
+  upgrade migration); vendored the rewritten `cache_report_per_call_timing.sh` (now merges
+  subagent transcripts into one per-session CSV).
+- Extended existing `claude.sessions` (has_subagent, first_model) instead of creating a
+  duplicate table — clarified with user first. Added new `claude.interactions_upload`
+  audit table, filled by pipeline.py's ingest loop.
+- code-reviewer found 3 real defects: subagent transcripts were being double-ingested
+  (script now merges them, pipeline.py still reported on them directly too), session
+  new/updated counters not rolled back on transaction failure, O(n²) delta_agent in the
+  shell script. All three fixed by python-pro, re-verified by test-automator +
+  code-reviewer spot check.
+- ruff/mypy/pytest (22/22) all green. Committed, pushed, PR #1 opened into main
+  (reviewer: neiro-data).
