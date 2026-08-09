@@ -15,8 +15,9 @@ from .conftest import SESSION_ID
 needs_jq = pytest.mark.skipif(shutil.which("jq") is None, reason="jq is not installed")
 
 EXPECTED_HEADER = (
-    "call,timestamp,uuid,parentUuid,input_tokens,cache_write_tokens,"
-    "cache_read_tokens,output_tokens,delta_seconds"
+    "call,timestamp,uuid,input_tokens,cache_write_tokens,cache_read_tokens,"
+    "output_tokens,delta_seconds,delta_seconds_global,agent,agent_type,depth,"
+    "parent_agent,model,tool_use_id,description"
 )
 
 
@@ -49,7 +50,8 @@ def test_generate_report_matches_the_reference_layout(transcript: Path, tmp_path
     assert header == EXPECTED_HEADER
     # Two requestId groups -> two rows; the second is 73s after the first.
     assert len(rows) == 2
-    assert rows[1].endswith(",73")
+    # delta_seconds,delta_seconds_global are the 8th/9th columns.
+    assert rows[1].split(",")[7:9] == ["73", "73"]
     assert report.stem == str(SESSION_ID)
     assert report.generated_at == datetime(2026, 8, 8, 11, 49, 35, tzinfo=UTC)
 

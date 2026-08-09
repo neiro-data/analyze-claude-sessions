@@ -44,11 +44,7 @@ def _render(rows: list[dict[str, Any]], title: str) -> None:
     for row in rows:
         table.add_row(
             *(
-                ""
-                if value is None
-                else _shorten(value)
-                if isinstance(value, str)
-                else str(value)
+                "" if value is None else _shorten(value) if isinstance(value, str) else str(value)
                 for value in row.values()
             )
         )

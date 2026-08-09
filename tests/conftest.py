@@ -8,17 +8,18 @@ import pytest
 
 SESSION_ID = UUID("bb5714bc-8305-4138-818a-3a96bcfe6549")
 
-CSV_WITH_PARENT = """\
-call,timestamp,uuid,parentUuid,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,delta_seconds
-1,"2026-08-08T11:49:40.410Z","306c344f-4993-478a-b3a6-dea410e2a026","265394c6-8523-4349-b1be-234c38a25d9f",10,8039,10090,605,0
-2,"2026-08-08T11:50:53.438Z","cde35a4f-6b3a-4b8c-9ba8-9103c642b593","279b3475-aed9-471e-963e-646eec55d188",10,3982,18741,614,73
+CSV_HEADER = (
+    "call,timestamp,uuid,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,"
+    "delta_seconds,delta_seconds_global,agent,agent_type,depth,parent_agent,model,"
+    "tool_use_id,description"
+)
+
+CSV_BODY = """\
+1,"2026-08-08T11:49:40.410Z","306c344f-4993-478a-b3a6-dea410e2a026",10,8039,10090,605,0,0,main,main,0,,claude-opus-5,,
+2,"2026-08-08T11:50:53.438Z","cde35a4f-6b3a-4b8c-9ba8-9103c642b593",10,3982,18741,614,73,73,main,main,0,,claude-opus-5,,
 """
 
-# The upstream script predates the parentUuid column; those CSVs must still load.
-CSV_WITHOUT_PARENT = """\
-call,timestamp,uuid,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,delta_seconds
-1,"2026-08-08T11:49:40.410Z","306c344f-4993-478a-b3a6-dea410e2a026",10,8039,10090,605,0
-"""
+CSV_REPORT = CSV_HEADER + "\n" + CSV_BODY
 
 
 def _record(**overrides: object) -> str:
@@ -100,14 +101,7 @@ def subagent_transcript(transcript: Path) -> Path:
 
 
 @pytest.fixture
-def csv_with_parent(tmp_path: Path) -> Path:
+def csv_report(tmp_path: Path) -> Path:
     path = tmp_path / f"{SESSION_ID}_20260808T11:49:35.csv"
-    path.write_text(CSV_WITH_PARENT, encoding="utf-8")
-    return path
-
-
-@pytest.fixture
-def csv_without_parent(tmp_path: Path) -> Path:
-    path = tmp_path / f"{SESSION_ID}_20260808T11:49:35.csv"
-    path.write_text(CSV_WITHOUT_PARENT, encoding="utf-8")
+    path.write_text(CSV_REPORT, encoding="utf-8")
     return path

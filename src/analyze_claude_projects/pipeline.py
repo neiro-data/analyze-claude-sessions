@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
@@ -15,6 +16,7 @@ from .loader import (
     load_api_calls,
     read_report_csv,
     record_csv_file,
+    record_interactions_upload,
     refresh_rollups,
     upsert_project,
     upsert_session,
@@ -66,6 +68,9 @@ def ingest_transcripts(
     """
     summary = IngestSummary()
     settings.ensure_dirs()
+    new_session_ids: set[str] = set()
+    updated_session_ids: set[str] = set()
+    started = time.monotonic()
 
     for transcript in transcripts:
         summary.discovered += 1
@@ -88,39 +93,49 @@ def ingest_transcripts(
                 continue
 
             project_id = upsert_project(conn, transcript.project_dir, meta.cwd)
-            upsert_session(conn, transcript.session_id, project_id, meta)
+            inserted = upsert_session(conn, transcript.session_id, project_id, meta)
+            session_key = str(transcript.session_id)
             transcript_id = upsert_transcript(conn, transcript, meta)
 
-            if meta.api_call_count == 0:
-                conn.commit()
-                summary.processed += 1
-                if on_progress:
-                    on_progress(f"meta  {label} (no API calls)")
-                continue
+            # Subagent transcripts are merged into the main transcript's report by
+            # cache_report_per_call_timing.sh's own subagent-discovery logic when the
+            # script runs against the *main* .jsonl. Running the report script directly
+            # on a subagent file would mislabel its rows as agent=main/depth=0 and
+            # double-insert its API calls (see handoff finding 1).
+            if not transcript.is_subagent and meta.api_call_count > 0:
+                report = generate_report(settings.report_script, transcript, settings.csv_dir)
+                frame = read_report_csv(report)
+                csv_id = record_csv_file(
+                    conn,
+                    run_id=run_id,
+                    transcript_id=transcript_id,
+                    session_id=transcript.session_id,
+                    report=report,
+                    row_count=frame.height,
+                )
+                loaded = load_api_calls(
+                    conn,
+                    transcript_id=transcript_id,
+                    session_id=transcript.session_id,
+                    csv_id=csv_id,
+                    frame=frame,
+                )
+                summary.rows_loaded += loaded
+                progress_msg = f"load  {label} -> {loaded} calls"
+            else:
+                progress_msg = f"meta  {label} (no API calls)"
 
-            report = generate_report(settings.report_script, transcript, settings.csv_dir)
-            frame = read_report_csv(report)
-            csv_id = record_csv_file(
-                conn,
-                run_id=run_id,
-                transcript_id=transcript_id,
-                session_id=transcript.session_id,
-                report=report,
-                row_count=frame.height,
-            )
-            loaded = load_api_calls(
-                conn,
-                transcript_id=transcript_id,
-                session_id=transcript.session_id,
-                csv_id=csv_id,
-                frame=frame,
-            )
             conn.commit()
+            if inserted:
+                new_session_ids.add(session_key)
+            else:
+                updated_session_ids.discard(session_key)
+                if session_key not in new_session_ids:
+                    updated_session_ids.add(session_key)
 
             summary.processed += 1
-            summary.rows_loaded += loaded
             if on_progress:
-                on_progress(f"load  {label} -> {loaded} calls")
+                on_progress(progress_msg)
         except Exception as exc:  # noqa: BLE001 - one bad transcript must not stop the run
             conn.rollback()
             summary.failed += 1
@@ -129,5 +144,13 @@ def ingest_transcripts(
                 on_progress(f"FAIL  {label}: {exc}")
 
     refresh_rollups(conn)
+    elapsed = time.monotonic() - started
+    record_interactions_upload(
+        conn,
+        run_id=run_id,
+        time_spent=int(elapsed),
+        new_sessions=len(new_session_ids),
+        updated_sessions=len(updated_session_ids),
+    )
     conn.commit()
     return summary
