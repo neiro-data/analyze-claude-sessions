@@ -1,0 +1,78 @@
+name: analyze-claude-projects
+
+x-postgres-env: &postgres-env
+  POSTGRES_USER: ${POSTGRES_USER:-claude}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-claude}
+  POSTGRES_DB: ${POSTGRES_DB:-claude_analytics}
+
+services:
+  postgres:
+    build:
+      context: ./docker/postgres
+      args:
+        PG_MAJOR: ${PG_MAJOR:-17}
+        PG_PARQUET_VERSION: ${PG_PARQUET_VERSION:-0.5.1}
+        PGRX_VERSION: ${PGRX_VERSION:-0.16.0}
+    image: analyze-claude-projects/postgres-pg-parquet:${PG_MAJOR:-17}-${PG_PARQUET_VERSION:-0.5.1}
+    container_name: acp-postgres
+    # Repeated here so the setting survives even if postgresql.conf is replaced.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_parquet
+      - -c
+      - max_wal_size=2GB
+    environment: *postgres-env
+    ports:
+      - "${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once, on an empty volume. `acp init-db` re-applies these any time.
+      - ./sql:/docker-entrypoint-initdb.d:ro
+      # Destination for pg_parquet COPY ... TO '/parquet/...'
+      - ./data/parquet:/parquet
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-claude} -d ${POSTGRES_DB:-claude_analytics}
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    image: analyze-claude-projects/app:${APP_VERSION:-0.1.0}
+    container_name: acp-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: >-
+        postgresql://${POSTGRES_USER:-claude}:${POSTGRES_PASSWORD:-claude}@postgres:5432/${POSTGRES_DB:-claude_analytics}
+      CLAUDE_PROJECTS_DIR: ${CLAUDE_PROJECTS_DIR}
+      DATA_DIR: /app/data
+      REPORT_SCRIPT: /app/scripts/cache_report_per_call_timing.sh
+      SQL_DIR: /app/sql
+      PARQUET_DIR_IN_DB: /parquet
+      # rich reads this to size its tables; the container cannot see the real TTY.
+      COLUMNS: ${COLUMNS:-150}
+    volumes:
+      # Mounted at its own host path rather than a tidier one like /claude-projects:
+      # some subagent transcripts are symlinks with absolute targets, and those only
+      # resolve if the directory sits at the same path inside the container.
+      # Absolute path required: compose does not expand `~` reliably.
+      - ${CLAUDE_PROJECTS_DIR:?set CLAUDE_PROJECTS_DIR to an absolute path, see .env.example}:${CLAUDE_PROJECTS_DIR}:ro
+      - ./data:/app/data
+      # Mounted for edit-run loops; .venv lives outside these paths.
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+      - ./sql:/app/sql
+    working_dir: /app
+    profiles: ["cli"]
+
+volumes:
+  pgdata:
