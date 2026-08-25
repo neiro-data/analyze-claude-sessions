@@ -1,28 +1,33 @@
 # HANDOFF
 
-State as of 2026-08-08. Everything in `README.md` is built, running, and verified against
-the real `~/.claude/projects` (250 transcripts, 5,029 API calls, 0 failures).
+Originally written 2026-08-08; **reviewed 2026-08-25** against the current code. Everything
+in `README.md` is built, running, and verified against the real `~/.claude/projects`
+(250 transcripts, 5,029 API calls, 0 failures).
+
+## Status at a glance (2026-08-25 review)
+
+| Item | Status |
+| --- | --- |
+| 1. Git — nothing committed | **DONE** — repo now has commits + PRs. |
+| 2. Symlinked subagent double-count | **OPEN** — still 1/147, low impact. |
+| 3. No incremental "tail" ingest | **OPEN** — grown transcripts still fully re-reported. |
+| 4. Nothing consumes the data | **OPEN (eased)** — per-call `model` now exists, so the cost-model join is no longer lossy. |
+| 5. Per-call model not captured | **DONE** — `model`/`agent`/`depth` columns landed in `96cc8e4`. |
+| 6. Upstream SIGPIPE bug (external script) | **OPEN (external)** — outside this repo. |
+
+Operator scripts now exist for routine work: `bin/ingest.sh`, `bin/backup-db.sh`,
+`bin/prune-csv.sh` (see `README.md` → Quick guide). `prune-csv.sh` is the answer to the
+unbounded `data/csv/` growth: parquet + Postgres are the durable audit copy, so raw CSVs are
+archived/pruned on a rolling window.
 
 ## What is *not* done
 
-### 1. Git — nothing is committed
+### 1. Git — committed (DONE)
 
-The repo was `git init -b main`'d but has **no commits**; every file is untracked. Per
-`REPOS/CLAUDE.md`, landing on `main` is a human action, so this is deliberately left to you:
-
-```bash
-cd analyze-claude-projects
-git checkout -b initial-project-scaffold
-git add . && git status          # confirm .env and data/ are excluded
-git commit -m "feat(analyze-claude-projects): postgres + pg_parquet foundation"
-```
-
-`.gitignore` covers `.env`, `.venv/`, `data/csv/`, `data/parquet/`, and the tool caches.
-**Check `git status` before the first `add`** — `.mypy_cache/`, `.pytest_cache/`,
-`.ruff_cache/` and `__pycache__/` are ignored but were created before `.gitignore` existed.
-
-`.env` was generated locally with the default password `claude`. It is git-ignored, but
-change it if this ever leaves the laptop.
+Resolved: the repo now has commits on `main` and PRs are opened per feature. `.gitignore`
+covers `.env`, `.venv/`, `data/csv/`, `data/parquet/`, `data/backups/`, and the tool caches.
+`.env` still holds the default password `claude` (git-ignored) — change it if this ever
+leaves the laptop.
 
 ### 2. Symlinked subagent transcripts can double-count
 
@@ -57,15 +62,12 @@ obvious next steps, roughly in value order:
 - **Scheduled ingest.** `make ingest` is idempotent and safe to run on a cron / launchd
   timer.
 
-### 5. Per-call model is not captured
+### 5. Per-call model is now captured (DONE)
 
-`cache_report_per_call_timing.sh` does not emit `message.model`, so `api_calls` has no model
-column — the model set lives on `transcripts.models` as an array. Any per-call cost or
-per-model breakdown needs one of:
-
-- extend the report script with a `model` column (changes the CSV contract), or
-- backfill from the JSONL in `jsonl_meta.py` keyed on `message_uuid`, which keeps the CSV
-  contract intact and is the lower-risk option.
+Resolved in `96cc8e4`: `cache_report_per_call_timing.sh` now emits `model` (plus `agent`,
+`agent_type`, `depth`, `parent_agent`), and `claude.api_calls` has the matching columns
+(`sql/002_schema.sql:175-192`, indexed on `model`). Per-call and per-model breakdowns are now
+a plain column, no array join. This also un-blocks the cost model in item 4.
 
 ### 6. Upstream script still has the SIGPIPE bug
 
