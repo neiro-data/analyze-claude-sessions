@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+import sys
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -315,6 +318,73 @@ def test_local_embedding_backend_raises_when_dependency_missing(
         backend.encode(["hello"])
 
 
+def _seed_hf_cache(hf_home: Path, repo_id: str) -> None:
+    snapshots = hf_home / "hub" / f"models--{repo_id.replace('/', '--')}" / "snapshots"
+    (snapshots / "deadbeef").mkdir(parents=True)
+
+
+def test_is_cached_true_when_snapshot_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    _seed_hf_cache(tmp_path, "sentence-transformers/all-MiniLM-L6-v2")
+
+    assert LocalEmbeddingBackend()._is_cached() is True
+
+
+def test_is_cached_false_when_absent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+
+    assert LocalEmbeddingBackend()._is_cached() is False
+
+
+def test_load_sets_offline_env_when_model_cached(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When the model is cached, _load() forces HF offline mode before importing
+    sentence_transformers, so no HF Hub request (and its HF_TOKEN warning) fires."""
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.delenv("TRANSFORMERS_OFFLINE", raising=False)
+    _seed_hf_cache(tmp_path, "sentence-transformers/all-MiniLM-L6-v2")
+
+    seen: dict[str, str | None] = {}
+
+    class _FakeSentenceTransformer:
+        def __init__(self, model_name: str) -> None:
+            seen["HF_HUB_OFFLINE"] = os.environ.get("HF_HUB_OFFLINE")
+
+    fake_module = type("M", (), {"SentenceTransformer": _FakeSentenceTransformer})
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+
+    LocalEmbeddingBackend()._load()
+
+    assert os.environ["HF_HUB_OFFLINE"] == "1"
+    assert os.environ["TRANSFORMERS_OFFLINE"] == "1"
+    assert seen["HF_HUB_OFFLINE"] == "1"  # set before the import saw it
+
+
+def test_load_leaves_hub_reachable_when_model_uncached(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """On a fresh machine (no cached snapshot) offline mode is not forced, so the
+    one-time download can proceed."""
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
+    monkeypatch.delenv("TRANSFORMERS_OFFLINE", raising=False)
+
+    class _FakeSentenceTransformer:
+        def __init__(self, model_name: str) -> None:
+            pass
+
+    fake_module = type("M", (), {"SentenceTransformer": _FakeSentenceTransformer})
+    monkeypatch.setitem(sys.modules, "sentence_transformers", fake_module)
+
+    LocalEmbeddingBackend()._load()
+
+    assert "HF_HUB_OFFLINE" not in os.environ
+
+
 # --------------------------------------------------------------------------
 # load_examples
 # --------------------------------------------------------------------------
@@ -441,9 +511,7 @@ _SESSION_ID = "11111111-1111-1111-1111-111111111111"
 _SESSION_SQL = "SELECT * FROM claude.api_calls WHERE session_id = %s"
 
 
-def _patch_session_scoped(
-    monkeypatch: pytest.MonkeyPatch, fetch_all_impl: Any
-) -> None:
+def _patch_session_scoped(monkeypatch: pytest.MonkeyPatch, fetch_all_impl: Any) -> None:
     monkeypatch.setattr(cli_mod, "connect", _fake_connect)
     monkeypatch.setattr(
         cli_mod,
