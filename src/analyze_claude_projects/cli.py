@@ -112,6 +112,10 @@ def ingest(
     quiet: Annotated[
         bool, typer.Option("--quiet", "-q", help="Suppress per-session lines.")
     ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="Also print per-session lines with no API calls."),
+    ] = False,
 ) -> None:
     """Run the full pipeline: discover -> CSV report -> PostgreSQL."""
     settings = get_settings()
@@ -126,7 +130,12 @@ def ingest(
             source_root=str(settings.projects_dir),
             csv_dir=str(settings.csv_dir),
         )
-        hook = None if quiet else console.print
+        def _print(msg: str) -> None:
+            if not verbose and "(no API calls)" in msg:
+                return
+            console.print(msg)
+
+        hook = None if quiet else _print
         summary = ingest_transcripts(
             conn, settings, transcripts, run_id=run_id, force=force, on_progress=hook
         )
