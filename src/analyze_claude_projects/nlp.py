@@ -7,8 +7,10 @@ model and ranking by cosine similarity against the user's question.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
@@ -96,6 +98,16 @@ class LocalEmbeddingBackend:
     def _load(self) -> object:
         if self._model is not None:
             return self._model
+        # Honour the "fully offline" contract: once the model is cached, load it
+        # without contacting the HF Hub. Otherwise sentence-transformers pings the
+        # Hub on every load to check the snapshot, which emits an HF_TOKEN
+        # rate-limit warning. huggingface_hub freezes HF_HUB_OFFLINE into a module
+        # constant at import time, so this must run *before* the import below. On a
+        # fresh machine the model isn't cached yet, so we leave the Hub reachable
+        # for the one-time download. An explicit user-set HF_HUB_OFFLINE wins.
+        if "HF_HUB_OFFLINE" not in os.environ and self._is_cached():
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:  # pragma: no cover - exercised via missing dep
@@ -105,6 +117,22 @@ class LocalEmbeddingBackend:
             ) from exc
         self._model = SentenceTransformer(self._model_name)
         return self._model
+
+    def _is_cached(self) -> bool:
+        """True if the model snapshot is already in the local HF cache.
+
+        Checks the filesystem directly so we don't import huggingface_hub (which
+        would freeze HF_HUB_OFFLINE) before we've decided whether to set it.
+        """
+        repo_id = self._model_name
+        if "/" not in repo_id:
+            repo_id = f"sentence-transformers/{repo_id}"
+        hf_home = os.environ.get("HF_HOME")
+        cache_root = (
+            Path(hf_home) / "hub" if hf_home else Path.home() / ".cache" / "huggingface" / "hub"
+        )
+        snapshots = cache_root / f"models--{repo_id.replace('/', '--')}" / "snapshots"
+        return snapshots.is_dir() and any(snapshots.iterdir())
 
     def encode(self, texts: list[str]) -> NDArray[np.float32]:
         model = self._load()
