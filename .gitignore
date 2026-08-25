@@ -19,3 +19,6 @@ data/backups/
 !data/parquet/.gitkeep
 
 .DS_Store
+
+claude_interaction_steps.md
+*[Hh][Aa][Nn][Dd][Oo][Ff][Ff]*.md
