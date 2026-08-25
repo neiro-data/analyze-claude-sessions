@@ -18,21 +18,30 @@ per-API-call token/timing reports produced by `cache_report_per_call_timing.sh`.
 - **Entry point:** `src/analyze_claude_projects/cli.py` (`acp` console script).
 - **Schema:** `sql/002_schema.sql` (tables) and `sql/003_views.sql` (reporting views).
 
-## Quick start
+## Quick guide
+
+### First-time setup
 
 ```bash
 make env          # writes .env with your real CLAUDE_PROJECTS_DIR
 make build        # builds both images (first run compiles pg_parquet, ~10-20 min)
 make up           # starts PostgreSQL, waits for healthy
 make init-db      # applies sql/*.sql (also runs automatically on a fresh volume)
-make ingest       # transcripts -> CSV -> PostgreSQL
-make stats        # headline numbers
-make export-parquet
-make psql         # interactive SQL
 ```
 
+### Routine ops
+
+- `bin/ingest.sh [--project X | --force]` — ingest new transcripts and refresh parquet
+  (idempotent; safe to cron).
+- `bin/backup-db.sh [DEST]` — back up the DB (pg_dump custom format) and parquet exports
+  to `DEST` (default `./data/backups`).
+- `bin/prune-csv.sh [--days N] [--delete] --yes` — trim/archive the `data/csv/` audit
+  folder; parquet + Postgres are the durable audit copy, so the raw CSVs are prunable.
+
 `make ingest ARGS="--project billing"` narrows to one project;
-`ARGS="--force"` re-reports transcripts that are byte-identical to what is already loaded.
+`ARGS="--force"` re-reports transcripts that are byte-identical to what is already loaded
+(both covered by `bin/ingest.sh`). `make stats`, `make psql`, and `make export-parquet`
+are still available directly.
 
 ## How it fits together
 
