@@ -2,11 +2,27 @@
   "uid": "acp-overview",
   "title": "Claude Usage Overview",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
   "editable": false,
-  "timezone": "browser",
+  "timezone": "utc",
   "time": { "from": "now-30d", "to": "now" },
-  "templating": { "list": [] },
+  "templating": {
+    "list": [
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+        "query": "SELECT DISTINCT model AS __text, model AS __value FROM claude.api_calls WHERE model IS NOT NULL ORDER BY model",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "",
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
@@ -14,11 +30,15 @@
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(total_input_tokens),0) + coalesce(sum(output_tokens),0) AS total_tokens FROM claude.v_daily_token_usage WHERE $__timeFilter(usage_date)"
+          "rawSql": "SELECT coalesce(sum(c.total_input_tokens),0) + coalesce(sum(c.output_tokens),0) AS total_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
         }
       ]
     },
@@ -28,11 +48,15 @@
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(DISTINCT session_id) AS total_sessions FROM claude.v_session_token_summary WHERE $__timeFilter(first_event_at)"
+          "rawSql": "SELECT count(DISTINCT c.session_id) AS total_sessions FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
         }
       ]
     },
@@ -42,11 +66,15 @@
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(api_calls),0) AS total_api_calls FROM claude.v_daily_token_usage WHERE $__timeFilter(usage_date)"
+          "rawSql": "SELECT count(*) AS total_api_calls FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
         }
       ]
     },
@@ -56,26 +84,136 @@
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
-      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT round(sum(cache_read_tokens)::numeric / NULLIF(sum(total_input_tokens),0) * 100, 2) AS cache_read_pct FROM claude.v_daily_token_usage WHERE $__timeFilter(usage_date)"
+          "rawSql": "SELECT round(sum(c.cache_read_tokens)::numeric / NULLIF(sum(c.total_input_tokens),0) * 100, 2) AS cache_read_pct FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Total duration",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 4 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT coalesce(sum(s.duration_seconds),0) AS total_duration_seconds FROM claude.v_session_token_summary s WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ','))))"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Average session duration",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 4 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT round(avg(s.duration_seconds), 1) AS avg_duration_seconds FROM claude.v_session_token_summary s WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ','))))"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Average API call duration",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 4 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 300 },
+              { "color": "red", "value": 3600 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT round(avg(c.delta_seconds), 1) AS avg_call_duration_seconds FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND c.call_index > 1 AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
         }
       ]
     },
     {
       "id": 5,
-      "title": "Tokens / calls over time",
+      "title": "Tokens over time",
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 4 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "output_tokens" },
+            "properties": [
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "custom.axisLabel", "value": "output tokens" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "total_input_tokens" },
+            "properties": [{ "id": "custom.axisLabel", "value": "input tokens" }]
+          }
+        ]
+      },
       "targets": [
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT usage_date AS time, total_input_tokens, output_tokens, api_calls FROM claude.v_daily_token_usage WHERE $__timeFilter(usage_date) ORDER BY usage_date"
+          "rawSql": "SELECT gs::date AS time, coalesce(sum(c.total_input_tokens),0) AS total_input_tokens, coalesce(sum(c.output_tokens),0) AS output_tokens FROM generate_series(date_trunc('day', $__timeFrom()::timestamptz), date_trunc('day', $__timeTo()::timestamptz), interval '1 day') gs LEFT JOIN claude.api_calls c ON date_trunc('day', c.called_at) = gs AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs ORDER BY gs"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "API calls over time",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 17 },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT gs::date AS time, count(c.*) AS api_calls FROM generate_series(date_trunc('day', $__timeFrom()::timestamptz), date_trunc('day', $__timeTo()::timestamptz), interval '1 day') gs LEFT JOIN claude.api_calls c ON date_trunc('day', c.called_at) = gs AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs ORDER BY gs"
         }
       ]
     },
@@ -84,12 +222,32 @@
       "title": "Cache efficiency",
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 13 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 26 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "cache_read_pct" },
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              { "id": "custom.axisLabel", "value": "cache-read %" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "cache_write_tokens" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "custom.axisLabel", "value": "cache-write tokens" }
+            ]
+          }
+        ]
+      },
       "targets": [
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT called_at AS time, cache_read_pct, context_growth_tokens FROM claude.v_call_cache_efficiency WHERE $__timeFilter(called_at) ORDER BY called_at"
+          "rawSql": "SELECT gs::date AS time, round(coalesce(sum(c.cache_read_tokens),0)::numeric / NULLIF(sum(c.total_input_tokens),0) * 100, 2) AS cache_read_pct, coalesce(sum(c.cache_write_tokens),0) AS cache_write_tokens FROM generate_series(date_trunc('day', $__timeFrom()::timestamptz), date_trunc('day', $__timeTo()::timestamptz), interval '1 day') gs LEFT JOIN claude.api_calls c ON date_trunc('day', c.called_at) = gs AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs ORDER BY gs"
         }
       ]
     },
@@ -98,12 +256,12 @@
       "title": "Session explorer",
       "type": "table",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 22 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 35 },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT session_id, project_dir, ai_title, total_input_tokens, output_tokens, cache_read_pct, api_calls, duration_seconds FROM claude.v_session_token_summary WHERE $__timeFilter(first_event_at) ORDER BY first_event_at DESC"
+          "rawSql": "SELECT s.session_id, s.project_dir, s.ai_title, s.total_input_tokens, s.output_tokens, s.cache_read_pct, s.api_calls, s.duration_seconds FROM claude.v_session_token_summary s WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) ORDER BY s.first_event_at DESC"
         }
       ],
       "fieldConfig": {

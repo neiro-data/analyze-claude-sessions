@@ -75,6 +75,12 @@ per-session detail) are loaded automatically from `docker/grafana/`, no manual i
 Grafana runs with anonymous Editor access and no login, by design for local single-user use;
 the port is bound to `127.0.0.1` only — don't expose it beyond localhost.
 
+Both dashboards render in UTC and carry a `Model` filter (defaults to all models combined).
+The overview shows token/call/duration totals plus time series and a session explorer; the
+session detail dashboard breaks a single session down per API call (tokens, cache-read %,
+context growth, time between calls) with a Cache-read % color code (green ≥90%, yellow
+60–90%, red <60%) shared across both dashboards.
+
 ## How it fits together
 
 ```
