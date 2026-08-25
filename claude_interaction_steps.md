@@ -50,3 +50,17 @@ subagent/model tracking + an upload audit table.
   code-reviewer spot check.
 - ruff/mypy/pytest (22/22) all green. Committed, pushed, PR #1 opened into main
   (reviewer: neiro-data).
+
+## 2026-08-25 — operator scripts (backup/ingest/prune) + HANDOFF review
+
+Purpose: add host-side ops tooling and answer the unbounded data/csv/ growth. Delivered as
+one PR per goal (user's call). Full agent pipeline run (user's call).
+- Pipeline: plan skipped (already scoped); docker-expert implemented 3 bash scripts +
+  README/.gitignore; python-conventions skipped (no Python); test-automator (static + help +
+  prune dry-run, data/csv/ proven byte-identical); code-reviewer scoped to prune-csv.sh only
+  (user's /btw). Review found 4 defects in prune-csv.sh (1 high --days 0 boundary, 1 med
+  archive-before-delete, 2 low); all fixed inline + re-tested (scratch archive round-trip).
+- PRs: #2 add-backup-script (backup-db.sh, DB pg_dump -Fc + parquet), this branch
+  add-ingest-script (ingest.sh + README Quick guide), refresh-handoff (HANDOFF.md), and
+  add-csv-prune (prune-csv.sh). CSV growth answer: parquet+Postgres are the durable audit
+  copy, so raw CSVs are archived/pruned on a rolling window.
