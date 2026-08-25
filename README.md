@@ -43,6 +43,15 @@ make init-db      # applies sql/*.sql (also runs automatically on a fresh volume
 (both covered by `bin/ingest.sh`). `make stats`, `make psql`, and `make export-parquet`
 are still available directly.
 
+### Natural-language queries (`acp ask`)
+
+`acp ask "how many tokens were spent per model?"` matches your question against a curated
+catalog of SQL queries (`claude.nlp_examples`, seeded by `sql/005_nlp_catalog.sql`) using
+local sentence embeddings, then runs the best match read-only. Fully offline — no network
+access or API key — after a one-time `uv sync --group nlp`. Add `--sql` to see the matched
+query, `--no-execute` to only preview it. If nothing matches confidently, it prints the
+closest candidate questions instead of guessing.
+
 ## How it fits together
 
 ```

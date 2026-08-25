@@ -12,6 +12,14 @@ from . import __version__
 from .config import get_settings
 from .db import apply_migrations, connect, fetch_all, finish_run, start_run
 from .discovery import discover_transcripts
+from .nlp import (
+    CatalogRetriever,
+    LocalEmbeddingBackend,
+    NlpDependencyError,
+    UnsafeQueryError,
+    ensure_read_only,
+    load_examples,
+)
 from .parquet_export import DEFAULT_RELATIONS, ensure_extension, export_relation
 from .pipeline import ingest_transcripts
 
@@ -243,3 +251,61 @@ def query(
         conn.execute("SET TRANSACTION READ ONLY")
         rows = fetch_all(conn, sql_text)
     _render(rows[:limit], f"{len(rows)} rows")
+
+
+@app.command()
+def ask(
+    question: Annotated[str, typer.Argument(help="A natural-language question about the data.")],
+    top_k: Annotated[int, typer.Option("--top-k", min=1, help="Candidates to consider.")] = 3,
+    show_sql: Annotated[bool, typer.Option("--sql", help="Print the matched SQL.")] = False,
+    execute: Annotated[bool, typer.Option(help="Run the matched query.")] = True,
+) -> None:
+    """Answer a question by matching it to curated SQL and running it read-only.
+
+    Fully offline: retrieval uses a local sentence-transformers model, no
+    network access or API key is required (one-time `uv sync --group nlp`).
+    """
+    settings = get_settings()
+    try:
+        with connect(settings.database_url) as conn:
+            rows = fetch_all(
+                conn,
+                "SELECT example_id, question, sql_text, description, tags FROM claude.nlp_examples",
+            )
+            examples = load_examples(rows)
+            retriever = CatalogRetriever(examples, LocalEmbeddingBackend())
+            ranked = retriever.search(question, top_k=top_k)
+
+            if not ranked:
+                console.print("[yellow]No curated questions available yet.[/yellow]")
+                raise typer.Exit(code=1)
+
+            top_example, top_score = ranked[0]
+            if not retriever.is_confident(top_score):
+                console.print(
+                    f"[yellow]Not confident enough (best score {top_score:.2f}).[/yellow] "
+                    "Try rephrasing, or pick one of these:"
+                )
+                for example, score in ranked:
+                    console.print(f"  [{score:.2f}] {example.question}")
+                raise typer.Exit(code=1)
+
+            console.print(
+                f"[green]Matched:[/green] {top_example.question} [dim](score {top_score:.2f})[/dim]"
+            )
+            if show_sql:
+                console.print(f"[dim]{top_example.sql_text}[/dim]")
+            if not execute:
+                return
+
+            ensure_read_only(top_example.sql_text)
+            conn.execute("SET TRANSACTION READ ONLY")
+            conn.execute("SET LOCAL statement_timeout = '15s'")
+            result_rows = fetch_all(conn, top_example.sql_text)
+        _render(result_rows, top_example.question)
+    except NlpDependencyError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except UnsafeQueryError as exc:
+        console.print(f"[red]Refusing to run query: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
