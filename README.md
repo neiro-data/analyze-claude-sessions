@@ -67,6 +67,14 @@ group. The app image ships without it, so `ask` prints an install hint if it is 
 enable it with a one-time `uv sync --group nlp` (locally) or by rebuilding the image with
 that group. Every other `acp` command works without it.
 
+## Dashboard
+
+`make dashboard` (or `make up-grafana`) starts PostgreSQL plus a provisioned Grafana instance
+at `http://localhost:${GRAFANA_PORT:-3000}` — datasource and dashboards (usage overview,
+per-session detail) are loaded automatically from `docker/grafana/`, no manual import needed.
+Grafana runs with anonymous Editor access and no login, by design for local single-user use;
+the port is bound to `127.0.0.1` only — don't expose it beyond localhost.
+
 ## How it fits together
 
 ```

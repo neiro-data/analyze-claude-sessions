@@ -1,0 +1,131 @@
+{
+  "uid": "acp-overview",
+  "title": "Claude Usage Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "browser",
+  "time": { "from": "now-30d", "to": "now" },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total tokens",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT coalesce(sum(total_input_tokens),0) + coalesce(sum(output_tokens),0) AS total_tokens FROM claude.v_daily_token_usage WHERE $__timeFilter(usage_date)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Total sessions",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(DISTINCT session_id) AS total_sessions FROM claude.v_session_token_summary WHERE $__timeFilter(first_event_at)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Total API calls",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT coalesce(sum(api_calls),0) AS total_api_calls FROM claude.v_daily_token_usage WHERE $__timeFilter(usage_date)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Cache-read %",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT round(sum(cache_read_tokens)::numeric / NULLIF(sum(total_input_tokens),0) * 100, 2) AS cache_read_pct FROM claude.v_daily_token_usage WHERE $__timeFilter(usage_date)"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Tokens / calls over time",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT usage_date AS time, total_input_tokens, output_tokens, api_calls FROM claude.v_daily_token_usage WHERE $__timeFilter(usage_date) ORDER BY usage_date"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Cache efficiency",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 13 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT called_at AS time, cache_read_pct, context_growth_tokens FROM claude.v_call_cache_efficiency WHERE $__timeFilter(called_at) ORDER BY called_at"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Session explorer",
+      "type": "table",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT session_id, project_dir, ai_title, total_input_tokens, output_tokens, cache_read_pct, api_calls, duration_seconds FROM claude.v_session_token_summary WHERE $__timeFilter(first_event_at) ORDER BY first_event_at DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "session_id" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open session detail",
+                    "url": "/d/acp-session-detail/session-detail?var-session_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
