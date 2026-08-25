@@ -1,0 +1,166 @@
+{
+  "uid": "acp-session-detail",
+  "title": "Session Detail",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "browser",
+  "time": { "from": "now-30d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "session_id",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+        "query": "SELECT session_id::text AS __value, coalesce(ai_title, session_id::text) AS __text FROM claude.v_session_token_summary ORDER BY first_event_at DESC",
+        "refresh": 1,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total tokens",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT total_input_tokens + output_tokens AS total_tokens FROM claude.v_session_token_summary WHERE session_id = ${session_id:sqlstring}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Cache-read %",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT cache_read_pct FROM claude.v_session_token_summary WHERE session_id = ${session_id:sqlstring}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Duration (s)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT duration_seconds FROM claude.v_session_token_summary WHERE session_id = ${session_id:sqlstring}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Model(s)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT array_to_string(models, ', ') AS models FROM claude.v_session_token_summary WHERE session_id = ${session_id:sqlstring}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Subagents / transcripts",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT subagent_count, transcript_count FROM claude.v_session_token_summary WHERE session_id = ${session_id:sqlstring}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Call timeline (tokens by kind)",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT called_at AS time, kind, total_input_tokens + output_tokens AS tokens FROM claude.v_call_detail WHERE session_id = ${session_id:sqlstring} ORDER BY called_at"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Cache efficiency over the session",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 13 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT called_at AS time, cache_read_pct, context_growth_tokens FROM claude.v_call_cache_efficiency WHERE session_id = ${session_id:sqlstring} ORDER BY called_at"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Long gaps",
+      "type": "table",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT kind, call_index, called_at, delta_seconds FROM claude.v_long_gaps WHERE session_id = ${session_id:sqlstring} ORDER BY delta_seconds DESC"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Agent / subagent breakdown",
+      "type": "table",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT agent, agent_type, depth, parent_agent, sum(total_input_tokens + output_tokens) AS tokens, count(*) AS calls FROM claude.v_call_detail WHERE session_id = ${session_id:sqlstring} GROUP BY agent, agent_type, depth, parent_agent ORDER BY tokens DESC"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Model mix",
+      "type": "table",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 30 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT model, count(*) AS calls, sum(total_input_tokens + output_tokens) AS tokens FROM claude.v_call_detail WHERE session_id = ${session_id:sqlstring} GROUP BY model ORDER BY tokens DESC"
+        }
+      ]
+    }
+  ]
+}

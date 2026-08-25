@@ -9,6 +9,7 @@ export CLAUDE_PROJECTS_DIR ?= $(HOME)/.claude/projects
 
 .PHONY: help env build build-db up down destroy logs ps psql \
         init-db discover ingest export-parquet stats shell \
+        up-grafana dashboard \
         venv lint fmt typecheck test check
 
 help: ## Show this help
@@ -64,6 +65,13 @@ stats: ## Print headline usage numbers
 
 shell: ## Bash prompt inside the app container
 	$(COMPOSE) run --rm --entrypoint bash app
+
+# --- dashboard ---------------------------------------------------------------
+up-grafana: env ## Start PostgreSQL + Grafana, waits for PostgreSQL to be healthy
+	$(COMPOSE) --profile dashboard up -d
+
+dashboard: up-grafana ## Start the dashboard and print its URL
+	@echo "Grafana: http://localhost:$${GRAFANA_PORT:-3000}"
 
 # --- local dev (no containers) ----------------------------------------------
 venv: ## Create the local .venv from uv.lock

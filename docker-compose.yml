@@ -74,5 +74,28 @@ services:
     working_dir: /app
     profiles: ["cli"]
 
+  grafana:
+    image: grafana/grafana-oss:11.3.0
+    container_name: acp-grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-claude_analytics}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-changeme_grafana}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    ports:
+      # Loopback-only: anonymous Editor access below has no auth, so this
+      # must not be reachable beyond the local machine.
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    profiles: ["dashboard"]
+
 volumes:
   pgdata:
+  grafana-data:

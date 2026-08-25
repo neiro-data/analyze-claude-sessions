@@ -1,0 +1,21 @@
+# Provisioned Postgres datasource. Grafana expands $VAR / ${VAR} in provisioning
+# files against its own process environment (native since Grafana 8), so
+# GRAFANA_DB_PASSWORD below comes straight from the grafana service's env.
+apiVersion: 1
+
+datasources:
+  - name: claude-analytics
+    uid: claude-analytics-pg
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: ${POSTGRES_DB}
+    user: grafana_reader
+    isDefault: true
+    editable: false
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: false
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}
