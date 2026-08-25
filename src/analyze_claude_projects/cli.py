@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
+import psycopg
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -265,7 +266,10 @@ def ask(
             LocalEmbeddingBackend,
             NlpDependencyError,
             UnsafeQueryError,
+            count_placeholders,
             ensure_read_only,
+            extract_session_id,
+            filter_examples,
             load_examples,
         )
     except ImportError as exc:
@@ -284,8 +288,21 @@ def ask(
                 "SELECT example_id, question, sql_text, description, tags FROM claude.nlp_examples",
             )
             examples = load_examples(rows)
-            retriever = CatalogRetriever(examples, LocalEmbeddingBackend())
-            ranked = retriever.search(question, top_k=top_k)
+            session_id, clean_question = extract_session_id(question)
+            scoped_examples = filter_examples(examples, session_scoped=session_id is not None)
+
+            if not scoped_examples:
+                if session_id is not None:
+                    console.print("[yellow]No session-scoped queries available yet.[/yellow]")
+                else:
+                    console.print(
+                        "[yellow]No curated questions available yet.[/yellow] "
+                        "Provide a session_id=<id> to run session-scoped queries."
+                    )
+                raise typer.Exit(code=1)
+
+            retriever = CatalogRetriever(scoped_examples, LocalEmbeddingBackend())
+            ranked = retriever.search(clean_question, top_k=top_k)
 
             if not ranked:
                 console.print("[yellow]No curated questions available yet.[/yellow]")
@@ -312,11 +329,19 @@ def ask(
             ensure_read_only(top_example.sql_text)
             conn.execute("SET TRANSACTION READ ONLY")
             conn.execute("SET LOCAL statement_timeout = '15s'")
-            result_rows = fetch_all(conn, top_example.sql_text)
+            # Every session-scoped catalog query binds the same `session_id` to
+            # each of its `%s` placeholders (all current ones use exactly one).
+            n_placeholders = count_placeholders(top_example.sql_text)
+            result_rows = fetch_all(conn, top_example.sql_text, (session_id,) * n_placeholders)
         _render(result_rows, top_example.question)
     except NlpDependencyError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
     except UnsafeQueryError as exc:
         console.print(f"[red]Refusing to run query: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except psycopg.Error as exc:
+        # A bad session_id (e.g. a value that fails the uuid cast) or any other
+        # database error surfaces as a friendly message, not a raw traceback.
+        console.print(f"[red]Query failed:[/red] {exc}")
         raise typer.Exit(code=1) from exc
