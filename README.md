@@ -45,15 +45,16 @@ are still available directly.
 
 ### Natural-language queries (`acp ask`)
 
-`acp` is the CLI **inside the app container** — it is not installed on your host, so running
-`acp ask …` in your own shell gives `command not found: acp`. Invoke it through Docker:
+Run it from the project root with `uv`:
 
 ```bash
-docker compose run --rm app ask "how many tokens were spent per model?"
-# or a bash prompt in the container, where `acp` is on PATH:
-make shell
-acp ask "how many tokens were spent per model?"
+uv run acp ask "how many tokens were spent per model?"
+# scope a session-specific query with session_id=<id>:
+uv run acp ask "cache report session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5"
 ```
+
+(`acp` also lives **inside the app container** — `docker compose run --rm app ask "…"`,
+or `make shell` then `acp ask "…"` — if you'd rather not run it on the host.)
 
 It matches your question against a curated catalog of SQL queries (`claude.nlp_examples`,
 seeded by `sql/005_nlp_catalog.sql`) using local sentence embeddings, then runs the best

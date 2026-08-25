@@ -203,18 +203,20 @@ VALUES
 ),
 (
     'cache report',
-    'SELECT coalesce(agent,''main'') AS agent,
+    'SELECT coalesce(agent_type, ''main'')                  AS agent,
             count(*)                                        AS calls,
             sum(cache_write_tokens)                          AS cache_write_tokens,
             sum(cache_read_tokens)                           AS cache_read_tokens,
+            round(sum(cache_read_tokens)::numeric
+                  / NULLIF(sum(cache_write_tokens), 0), 1)   AS reuse,
             sum(output_tokens)                               AS output_tokens,
             round(sum(cache_read_tokens)::numeric
                   / NULLIF(sum(total_input_tokens), 0) * 100, 1) AS cache_read_pct
        FROM claude.api_calls
       WHERE session_id = %s
-      GROUP BY coalesce(agent, ''main'')
+      GROUP BY coalesce(agent_type, ''main'')
       ORDER BY cache_read_tokens DESC',
-    'Per-agent cache write/read/output and cache-read % for one session.',
+    'Per-agent (by name) cache write/read/reuse/output and cache-read % for one session.',
     ARRAY['session_scoped', 'cache', 'session']
 ),
 (
