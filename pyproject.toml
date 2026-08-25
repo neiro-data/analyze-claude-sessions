@@ -23,6 +23,9 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.9",
 ]
+nlp = [
+    "sentence-transformers>=6.0.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -54,6 +57,10 @@ warn_unreachable = true
 
 [[tool.mypy.overrides]]
 module = ["polars.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["sentence_transformers.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
