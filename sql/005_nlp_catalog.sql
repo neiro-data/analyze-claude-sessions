@@ -200,6 +200,102 @@ VALUES
        FROM claude.api_calls',
     'Grand total of billed input and output tokens across all calls.',
     ARRAY['tokens', 'total', 'overall']
+),
+(
+    'cache report',
+    'SELECT coalesce(agent,''main'') AS agent,
+            count(*)                                        AS calls,
+            sum(cache_write_tokens)                          AS cache_write_tokens,
+            sum(cache_read_tokens)                           AS cache_read_tokens,
+            sum(output_tokens)                               AS output_tokens,
+            round(sum(cache_read_tokens)::numeric
+                  / NULLIF(sum(total_input_tokens), 0) * 100, 1) AS cache_read_pct
+       FROM claude.api_calls
+      WHERE session_id = %s
+      GROUP BY coalesce(agent, ''main'')
+      ORDER BY cache_read_tokens DESC',
+    'Per-agent cache write/read/output and cache-read % for one session.',
+    ARRAY['session_scoped', 'cache', 'session']
+),
+(
+    'tokens spent in this session',
+    'SELECT coalesce(sum(total_input_tokens), 0) AS total_input_tokens,
+            coalesce(sum(cache_write_tokens), 0) AS cache_write_tokens,
+            coalesce(sum(cache_read_tokens), 0)  AS cache_read_tokens,
+            coalesce(sum(output_tokens), 0)      AS output_tokens
+       FROM claude.api_calls
+      WHERE session_id = %s',
+    'Total input/cache/output tokens spent in one session.',
+    ARRAY['session_scoped', 'tokens', 'session']
+),
+(
+    'tokens spent per model in this session',
+    'SELECT model,
+            sum(total_input_tokens)                       AS total_input_tokens,
+            sum(output_tokens)                             AS output_tokens,
+            sum(total_input_tokens) + sum(output_tokens)   AS total_tokens
+       FROM claude.api_calls
+      WHERE session_id = %s
+      GROUP BY model
+      ORDER BY total_tokens DESC',
+    'Tokens spent per model within one session.',
+    ARRAY['session_scoped', 'tokens', 'model', 'session']
+),
+(
+    'tokens spent per agent in this session',
+    'SELECT coalesce(agent, ''main'')       AS agent,
+            coalesce(agent_type, '''')      AS agent_type,
+            sum(total_input_tokens)         AS total_input_tokens,
+            sum(output_tokens)              AS output_tokens,
+            sum(total_input_tokens) + sum(output_tokens) AS total_tokens
+       FROM claude.api_calls
+      WHERE session_id = %s
+      GROUP BY coalesce(agent, ''main''), coalesce(agent_type, '''')
+      ORDER BY total_tokens DESC',
+    'Tokens spent per agent within one session.',
+    ARRAY['session_scoped', 'tokens', 'agent', 'session']
+),
+(
+    'number of calls in this session',
+    'SELECT count(*) AS api_calls FROM claude.api_calls WHERE session_id = %s',
+    'Total number of API calls in one session.',
+    ARRAY['session_scoped', 'count', 'session']
+),
+(
+    'number of calls per agent in this session',
+    'SELECT coalesce(agent, ''main'') AS agent, count(*) AS api_calls
+       FROM claude.api_calls
+      WHERE session_id = %s
+      GROUP BY coalesce(agent, ''main'')
+      ORDER BY api_calls DESC',
+    'Number of API calls per agent within one session.',
+    ARRAY['session_scoped', 'count', 'agent', 'session']
+),
+(
+    'complete session output ordered by time',
+    'SELECT call_index, called_at, coalesce(agent, ''main'') AS agent, agent_type,
+            depth, model, total_input_tokens, output_tokens, delta_seconds, description
+       FROM claude.api_calls
+      WHERE session_id = %s
+      ORDER BY called_at, call_index',
+    'Full chronological call log for one session.',
+    ARRAY['session_scoped', 'session', 'timeline']
+),
+(
+    'session summary',
+    'SELECT * FROM claude.v_session_token_summary WHERE session_id = %s',
+    'Token usage summary for one session.',
+    ARRAY['session_scoped', 'session', 'summary']
+),
+(
+    'longest gaps in this session',
+    'SELECT call_index, called_at, coalesce(agent, ''main'') AS agent, delta_seconds
+       FROM claude.api_calls
+      WHERE session_id = %s
+      ORDER BY delta_seconds DESC
+      LIMIT 20',
+    'The twenty longest pauses between consecutive calls within one session.',
+    ARRAY['session_scoped', 'session', 'gaps']
 )
 ON CONFLICT (question)
 DO UPDATE SET sql_text    = EXCLUDED.sql_text,

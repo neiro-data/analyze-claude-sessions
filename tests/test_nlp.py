@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
+import psycopg
 import pytest
 from typer.testing import CliRunner
 
@@ -15,7 +16,10 @@ from analyze_claude_projects.nlp import (
     NlpDependencyError,
     NlpExample,
     UnsafeQueryError,
+    count_placeholders,
     ensure_read_only,
+    extract_session_id,
+    filter_examples,
     load_examples,
 )
 
@@ -75,6 +79,137 @@ def test_ensure_read_only_rejects(sql: str) -> None:
 def test_ensure_read_only_rejects_trailing_statement_after_select() -> None:
     with pytest.raises(UnsafeQueryError):
         ensure_read_only("SELECT 1; SELECT 2;")
+
+
+def test_ensure_read_only_accepts_sql_with_placeholder() -> None:
+    ensure_read_only("SELECT * FROM claude.sessions WHERE session_id = %s")  # must not raise
+
+
+# --------------------------------------------------------------------------
+# extract_session_id
+# --------------------------------------------------------------------------
+
+
+def test_extract_session_id_extracts_and_cleans() -> None:
+    session_id, cleaned = extract_session_id("cache report session_id=abc-123")
+
+    assert session_id == "abc-123"
+    assert cleaned == "cache report"
+
+
+def test_extract_session_id_handles_spaces_around_equals() -> None:
+    session_id, cleaned = extract_session_id("cache report session_id = abc-123")
+
+    assert session_id == "abc-123"
+    assert cleaned == "cache report"
+
+
+def test_extract_session_id_case_insensitive() -> None:
+    session_id, cleaned = extract_session_id("cache report SESSION_ID=abc-123")
+
+    assert session_id == "abc-123"
+    assert cleaned == "cache report"
+
+
+def test_extract_session_id_returns_none_when_absent() -> None:
+    question = "how many sessions do we have?"
+
+    session_id, cleaned = extract_session_id(question)
+
+    assert session_id is None
+    assert cleaned == question
+
+
+def test_extract_session_id_no_leftover_double_spaces() -> None:
+    _, cleaned = extract_session_id("show me the session_id=xyz stats please")
+
+    assert "  " not in cleaned
+    assert cleaned == "show me the stats please"
+
+
+def test_extract_session_id_excludes_trailing_comma() -> None:
+    session_id, cleaned = extract_session_id("cache report session_id=abc-123, please")
+
+    assert session_id == "abc-123"
+    assert "," not in session_id
+    assert "abc-123" not in cleaned
+
+
+@pytest.mark.parametrize("trailing", ["?", "."])
+def test_extract_session_id_excludes_trailing_punctuation(trailing: str) -> None:
+    session_id, _cleaned = extract_session_id(f"cache report session_id=abc-123{trailing}")
+
+    assert session_id == "abc-123"
+    assert trailing not in session_id
+
+
+# --------------------------------------------------------------------------
+# count_placeholders
+# --------------------------------------------------------------------------
+
+
+def test_count_placeholders_none() -> None:
+    assert count_placeholders("SELECT 1") == 0
+
+
+def test_count_placeholders_one() -> None:
+    assert count_placeholders("SELECT * FROM t WHERE a = %s") == 1
+
+
+def test_count_placeholders_multiple() -> None:
+    assert count_placeholders("SELECT * FROM t WHERE a = %s AND b = %s AND c = %s") == 3
+
+
+def test_count_placeholders_ignores_literal_inside_string() -> None:
+    sql = "SELECT * FROM t WHERE x = %s AND y LIKE '%s%'"
+
+    assert count_placeholders(sql) == 1
+
+
+# --------------------------------------------------------------------------
+# filter_examples
+# --------------------------------------------------------------------------
+
+
+def _mixed_examples() -> list[NlpExample]:
+    return [
+        NlpExample(
+            example_id=1,
+            question="calls for this session",
+            sql_text="SELECT 1",
+            tags=("session_scoped",),
+        ),
+        NlpExample(
+            example_id=2,
+            question="total sessions",
+            sql_text="SELECT 2",
+            tags=(),
+        ),
+        NlpExample(
+            example_id=3,
+            question="tokens for this session",
+            sql_text="SELECT 3",
+            tags=("session_scoped", "tokens"),
+        ),
+        NlpExample(
+            example_id=4,
+            question="total projects",
+            sql_text="SELECT 4",
+            tags=("projects",),
+        ),
+    ]
+
+
+def test_filter_examples_session_scoped_true_keeps_tagged() -> None:
+    filtered = filter_examples(_mixed_examples(), session_scoped=True)
+
+    assert [example.example_id for example in filtered] == [1, 3]
+
+
+def test_filter_examples_session_scoped_false_keeps_untagged() -> None:
+    filtered = filter_examples(_mixed_examples(), session_scoped=False)
+
+    assert [example.example_id for example in filtered] == [2, 4]
 
 
 # --------------------------------------------------------------------------
@@ -295,3 +430,93 @@ def test_ask_cli_low_confidence_prints_candidates(monkeypatch: pytest.MonkeyPatc
     assert result.exit_code == 1
     assert "Not confident enough" in result.output
     assert "how many sessions" in result.output
+
+
+# --------------------------------------------------------------------------
+# CLI `ask` - session-scoped param wiring / DB error handling
+# --------------------------------------------------------------------------
+
+
+_SESSION_ID = "11111111-1111-1111-1111-111111111111"
+_SESSION_SQL = "SELECT * FROM claude.api_calls WHERE session_id = %s"
+
+
+def _patch_session_scoped(
+    monkeypatch: pytest.MonkeyPatch, fetch_all_impl: Any
+) -> None:
+    monkeypatch.setattr(cli_mod, "connect", _fake_connect)
+    monkeypatch.setattr(
+        cli_mod,
+        "get_settings",
+        lambda: type("S", (), {"database_url": "postgresql://fake"})(),
+    )
+    monkeypatch.setattr(cli_mod, "fetch_all", fetch_all_impl)
+    backend = _FakeBackend(
+        {
+            "cache report": [1.0, 0.0],
+        }
+    )
+    monkeypatch.setattr(nlp_mod, "LocalEmbeddingBackend", lambda: backend)
+
+
+def test_ask_cli_session_scoped_sizes_params_from_placeholders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The (session_id,) * n params tuple handed to fetch_all matches the
+    query's placeholder count, for a session-scoped question."""
+    calls: list[tuple[str, Any]] = []
+
+    def _fetch_all(conn: Any, sql: str, params: Any = None) -> list[dict[str, Any]]:
+        if "nlp_examples" in sql:
+            return [
+                {
+                    "example_id": 1,
+                    "question": "cache report",
+                    "sql_text": _SESSION_SQL,
+                    "description": None,
+                    "tags": ["session_scoped"],
+                }
+            ]
+        calls.append((sql, params))
+        return []
+
+    _patch_session_scoped(monkeypatch, _fetch_all)
+
+    result = runner.invoke(
+        cli_mod.app,
+        ["ask", f"cache report session_id={_SESSION_ID}"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(calls) == 1
+    executed_sql, params = calls[0]
+    assert executed_sql == _SESSION_SQL
+    assert params == (_SESSION_ID,)
+
+
+def test_ask_cli_db_error_caught_and_exits_nonzero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A psycopg.Error raised by fetch_all when running the matched query is
+    caught and surfaces as a typer.Exit, not a raw traceback."""
+
+    def _fetch_all(conn: Any, sql: str, params: Any = None) -> list[dict[str, Any]]:
+        if "nlp_examples" in sql:
+            return [
+                {
+                    "example_id": 1,
+                    "question": "cache report",
+                    "sql_text": _SESSION_SQL,
+                    "description": None,
+                    "tags": ["session_scoped"],
+                }
+            ]
+        raise psycopg.errors.InvalidTextRepresentation("invalid input syntax for type uuid")
+
+    _patch_session_scoped(monkeypatch, _fetch_all)
+
+    result = runner.invoke(
+        cli_mod.app,
+        ["ask", f"cache report session_id={_SESSION_ID}"],
+    )
+
+    assert result.exit_code == 1
+    assert "Query failed" in result.output

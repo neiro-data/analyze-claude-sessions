@@ -17,6 +17,14 @@ from numpy.typing import NDArray
 #: Minimum cosine similarity for a top hit to be considered a confident match.
 CONFIDENCE_THRESHOLD = 0.5
 
+#: Tag marking a catalog example as scoped to a single session_id.
+SESSION_SCOPED_TAG = "session_scoped"
+
+# Session ids are word characters and hyphens (e.g. a UUID). Restricting the
+# capture to that set stops trailing sentence punctuation (`,` `.` `?`) from
+# being swallowed into the id, which would otherwise fail the uuid cast.
+_SESSION_ID_RE = re.compile(r"session_id\s*=\s*([\w-]+)", re.IGNORECASE)
+
 #: Default local embedding model; small, CPU-friendly, good general recall.
 DEFAULT_MODEL_NAME = "all-MiniLM-L6-v2"
 
@@ -163,6 +171,42 @@ def load_examples(rows: list[dict[str, Any]]) -> list[NlpExample]:
             )
         )
     return examples
+
+
+def extract_session_id(question: str) -> tuple[str | None, str]:
+    """Pull a `session_id=<value>` token out of *question*, if present.
+
+    Returns the extracted session id and the question with that token
+    removed (leftover whitespace collapsed). Returns `(None, question)`
+    unchanged when no such token is found.
+    """
+    match = _SESSION_ID_RE.search(question)
+    if not match:
+        return None, question
+    session_id = match.group(1)
+    cleaned = question[: match.start()] + question[match.end() :]
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return session_id, cleaned
+
+
+def count_placeholders(sql: str) -> int:
+    """Count `%s` bind placeholders in *sql* (used to size query params).
+
+    String literals are blanked first so a literal `%s` inside a quoted value
+    (e.g. a `LIKE '%s%'` pattern) is not miscounted as a bind marker.
+    """
+    return _blank_string_literals(sql).count("%s")
+
+
+def filter_examples(examples: list[NlpExample], *, session_scoped: bool) -> list[NlpExample]:
+    """Keep only session-scoped examples, or only non-session-scoped ones.
+
+    When *session_scoped* is True, keep examples tagged `SESSION_SCOPED_TAG`;
+    otherwise keep examples that lack that tag.
+    """
+    if session_scoped:
+        return [example for example in examples if SESSION_SCOPED_TAG in example.tags]
+    return [example for example in examples if SESSION_SCOPED_TAG not in example.tags]
 
 
 def ensure_read_only(sql: str) -> None:
