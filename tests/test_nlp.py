@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from analyze_claude_projects import cli as cli_mod
+from analyze_claude_projects import nlp as nlp_mod
 from analyze_claude_projects.nlp import (
     CatalogRetriever,
     LocalEmbeddingBackend,
@@ -267,7 +268,7 @@ def test_ask_cli_sql_no_execute_prints_matched_sql(monkeypatch: pytest.MonkeyPat
             "how many sessions do we have?": [1.0, 0.0],
         }
     )
-    monkeypatch.setattr(cli_mod, "LocalEmbeddingBackend", lambda: backend)
+    monkeypatch.setattr(nlp_mod, "LocalEmbeddingBackend", lambda: backend)
 
     result = runner.invoke(
         cli_mod.app,
@@ -287,7 +288,7 @@ def test_ask_cli_low_confidence_prints_candidates(monkeypatch: pytest.MonkeyPatc
             "completely unrelated gibberish": [-1.0, 0.0],
         }
     )
-    monkeypatch.setattr(cli_mod, "LocalEmbeddingBackend", lambda: backend)
+    monkeypatch.setattr(nlp_mod, "LocalEmbeddingBackend", lambda: backend)
 
     result = runner.invoke(cli_mod.app, ["ask", "completely unrelated gibberish"])
 

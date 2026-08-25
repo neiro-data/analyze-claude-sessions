@@ -12,14 +12,6 @@ from . import __version__
 from .config import get_settings
 from .db import apply_migrations, connect, fetch_all, finish_run, start_run
 from .discovery import discover_transcripts
-from .nlp import (
-    CatalogRetriever,
-    LocalEmbeddingBackend,
-    NlpDependencyError,
-    UnsafeQueryError,
-    ensure_read_only,
-    load_examples,
-)
 from .parquet_export import DEFAULT_RELATIONS, ensure_extension, export_relation
 from .pipeline import ingest_transcripts
 
@@ -265,6 +257,25 @@ def ask(
     Fully offline: retrieval uses a local sentence-transformers model, no
     network access or API key is required (one-time `uv sync --group nlp`).
     """
+    # Imported lazily so the optional `nlp` dependency group (numpy, sentence
+    # -transformers) is only required by this command, not the whole CLI.
+    try:
+        from .nlp import (
+            CatalogRetriever,
+            LocalEmbeddingBackend,
+            NlpDependencyError,
+            UnsafeQueryError,
+            ensure_read_only,
+            load_examples,
+        )
+    except ImportError as exc:
+        console.print(
+            "[red]Natural-language queries need the optional 'nlp' dependency "
+            "group.[/red] Install it with [bold]uv sync --group nlp[/bold] "
+            "(or rebuild the app image)."
+        )
+        raise typer.Exit(code=1) from exc
+
     settings = get_settings()
     try:
         with connect(settings.database_url) as conn:

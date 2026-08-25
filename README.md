@@ -45,12 +45,26 @@ are still available directly.
 
 ### Natural-language queries (`acp ask`)
 
-`acp ask "how many tokens were spent per model?"` matches your question against a curated
-catalog of SQL queries (`claude.nlp_examples`, seeded by `sql/005_nlp_catalog.sql`) using
-local sentence embeddings, then runs the best match read-only. Fully offline — no network
-access or API key — after a one-time `uv sync --group nlp`. Add `--sql` to see the matched
-query, `--no-execute` to only preview it. If nothing matches confidently, it prints the
-closest candidate questions instead of guessing.
+`acp` is the CLI **inside the app container** — it is not installed on your host, so running
+`acp ask …` in your own shell gives `command not found: acp`. Invoke it through Docker:
+
+```bash
+docker compose run --rm app ask "how many tokens were spent per model?"
+# or a bash prompt in the container, where `acp` is on PATH:
+make shell
+acp ask "how many tokens were spent per model?"
+```
+
+It matches your question against a curated catalog of SQL queries (`claude.nlp_examples`,
+seeded by `sql/005_nlp_catalog.sql`) using local sentence embeddings, then runs the best
+match read-only. Fully offline — no network access or API key. Add `--sql` to see the
+matched query, `--no-execute` to only preview it. If nothing matches confidently, it prints
+the closest candidate questions instead of guessing.
+
+The embedding model (numpy, sentence-transformers) lives in the optional `nlp` dependency
+group. The app image ships without it, so `ask` prints an install hint if it is missing;
+enable it with a one-time `uv sync --group nlp` (locally) or by rebuilding the image with
+that group. Every other `acp` command works without it.
 
 ## How it fits together
 
