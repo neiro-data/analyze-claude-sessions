@@ -93,22 +93,46 @@ COMMENT ON VIEW claude.v_session_lineage IS
 -- Per-root rollup: did the handoff chain actually save anything end to end?
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE VIEW claude.v_session_family AS
+-- The model list is rolled up in its own CTE rather than with a LATERAL
+-- unnest in the main aggregate: unnesting alongside the sums would fan each
+-- session out to one row per model, inflating chain_length and every total by
+-- the number of models that session used.
+WITH member AS (
+    SELECT
+        l.root_session_id,
+        sts.session_id,
+        sts.models,
+        sts.api_calls,
+        sts.total_input_tokens,
+        sts.output_tokens,
+        sts.first_event_at,
+        sts.last_event_at
+    FROM claude.v_session_lineage l
+    JOIN claude.v_session_token_summary sts USING (session_id)
+),
+family_models AS (
+    SELECT
+        m.root_session_id,
+        coalesce(array_agg(DISTINCT md ORDER BY md)
+                 FILTER (WHERE md IS NOT NULL), '{}')     AS distinct_models
+    FROM member m
+    LEFT JOIN LATERAL unnest(m.models) AS md ON true
+    GROUP BY m.root_session_id
+)
 SELECT
-    l.root_session_id,
-    count(*)                                          AS chain_length,
-    coalesce(array_agg(DISTINCT m ORDER BY m)
-             FILTER (WHERE m IS NOT NULL), '{}')       AS distinct_models,
-    coalesce(sum(sts.api_calls), 0)                    AS total_api_calls,
-    coalesce(sum(sts.total_input_tokens), 0)           AS total_input_tokens,
-    coalesce(sum(sts.output_tokens), 0)                AS total_output_tokens,
-    min(sts.first_event_at)                            AS family_first_event_at,
-    max(sts.last_event_at)                             AS family_last_event_at,
-    EXTRACT(EPOCH FROM (max(sts.last_event_at) - min(sts.first_event_at)))
-                                                        AS family_span_seconds
-FROM claude.v_session_lineage l
-JOIN claude.v_session_token_summary sts USING (session_id)
-LEFT JOIN LATERAL unnest(sts.models) AS m ON true
-GROUP BY l.root_session_id;
+    m.root_session_id,
+    count(*)                                              AS chain_length,
+    coalesce(fm.distinct_models, '{}')                    AS distinct_models,
+    coalesce(sum(m.api_calls), 0)                         AS total_api_calls,
+    coalesce(sum(m.total_input_tokens), 0)                AS total_input_tokens,
+    coalesce(sum(m.output_tokens), 0)                     AS total_output_tokens,
+    min(m.first_event_at)                                 AS family_first_event_at,
+    max(m.last_event_at)                                  AS family_last_event_at,
+    EXTRACT(EPOCH FROM (max(m.last_event_at) - min(m.first_event_at)))
+                                                          AS family_span_seconds
+FROM member m
+LEFT JOIN family_models fm USING (root_session_id)
+GROUP BY m.root_session_id, fm.distinct_models;
 
 COMMENT ON VIEW claude.v_session_family IS
     'Per-root rollup of a whole parent/child chain: chain length, models used '

@@ -116,6 +116,20 @@ length, models used, and total tokens end to end, and a "Sessions" table with da
 `session_id` and `parent_session_id`. `parent_session_id` is unvalidated and not a foreign key —
 the parent may never get ingested — so `parent_ingested` distinguishes a resolved parent from a
 merely claimed one. Wiring the role toggle into the other two dashboards is not done yet.
+The "Session families" table has a `combined family view` column that is populated only when
+`chain_length > 1`; clicking it opens the family dashboard below.
+
+The session family dashboard (uid `acp-session-family`) renders a whole spawn chain as one
+merged session — the Session Detail layout, but over every member at once. Pick a family with
+the `Family (root session)` variable (only chains with `chain_length > 1` are listed), then use
+the `Scope` toggle to switch between *All sessions in the family* and *Sessions 1..N-1 (drop
+most recent)* — useful for asking what the chain had cost before the newest handoff. Calls from
+all included sessions are merged into a single timestamp-ordered timeline (`family_call_index`
+is recomputed after the scope filter, so it stays contiguous under either setting), and the
+"Merged call timeline" panel gives each member its own colour with a legend; the "Family
+members" table doubles as the legend and links each member out to its own Session Detail.
+Backed by `claude.v_session_family_member` and `claude.v_family_call_detail`
+(`sql/009_family_dashboard_views.sql`). Members are ordered by first activity, so a member that was ingested but made no API call has no `first_event_at` and sorts last — the "drop most recent" toggle would drop that empty session rather than the true latest handoff.
 
 ## How it fits together
 

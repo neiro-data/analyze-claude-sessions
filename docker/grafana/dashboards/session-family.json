@@ -1,0 +1,875 @@
+{
+  "uid": "acp-session-family",
+  "title": "Session Family",
+  "description": "A whole parent/child session chain rendered as one merged session: the call timeline is ordered by timestamp across every member, with a colour per member. Use the Scope toggle to drop the most recent member.",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "utc",
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "root_session_id",
+        "label": "Family (root session)",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "claude-analytics-pg"
+        },
+        "query": "SELECT f.root_session_id::text AS __value, coalesce(nullif(s.ai_title, ''), left(f.root_session_id::text, 8)) || ' (' || f.chain_length || ' sessions)' AS __text FROM claude.v_session_family f JOIN claude.v_session_token_summary s ON s.session_id = f.root_session_id WHERE f.chain_length > 1 ORDER BY f.family_first_event_at DESC",
+        "refresh": 1,
+        "sort": 0,
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "name": "scope",
+        "label": "Scope",
+        "type": "custom",
+        "query": "All sessions in the family : all, Sessions 1..N-1 (drop most recent) : exclude_last",
+        "options": [
+          {
+            "text": "All sessions in the family",
+            "value": "all",
+            "selected": true
+          },
+          {
+            "text": "Sessions 1..N-1 (drop most recent)",
+            "value": "exclude_last",
+            "selected": false
+          }
+        ],
+        "current": {
+          "text": "All sessions in the family",
+          "value": "all"
+        },
+        "multi": false,
+        "includeAll": false
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "claude-analytics-pg"
+        },
+        "query": "SELECT DISTINCT model AS __text, model AS __value FROM claude.v_family_call_detail WHERE root_session_id = ${root_session_id:sqlstring} AND model IS NOT NULL ORDER BY model",
+        "refresh": 1,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 20,
+      "title": "",
+      "type": "stat",
+      "transparent": true,
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "textMode": "value",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "family_title",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT coalesce(nullif(m.ai_title, ''), m.session_id::text) || ' — family of ' || m.member_count || ', showing ' || (CASE WHEN ${scope:sqlstring} = 'all' THEN m.member_count ELSE m.member_count - 1 END) || ' session(s)' AS family_title FROM claude.v_session_family_member m WHERE m.root_session_id = ${root_session_id:sqlstring} AND m.session_id = ${root_session_id:sqlstring}"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Sessions included",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 3
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS sessions_included FROM claude.v_session_family_member m WHERE m.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT m.is_last_member)"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Total tokens",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 3
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1000000
+              },
+              {
+                "color": "orange",
+                "value": 5000000
+              },
+              {
+                "color": "red",
+                "value": 10000000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))) SELECT coalesce(sum(total_input_tokens), 0) + coalesce(sum(output_tokens), 0) AS total_tokens FROM calls"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "title": "Cache-read %",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 3
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 60
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))) SELECT round(sum(cache_read_tokens)::numeric / NULLIF(sum(total_input_tokens), 0) * 100, 2) AS cache_read_pct FROM calls"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "title": "API calls",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 3
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))) SELECT count(*) AS api_calls FROM calls"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "title": "Family span (s)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 3
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))) SELECT round(EXTRACT(EPOCH FROM (max(called_at) - min(called_at)))::numeric, 0) AS family_span_seconds FROM calls"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "title": "Avg interval between merged calls (s)",
+      "type": "stat",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 3
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))), gaps AS (SELECT EXTRACT(EPOCH FROM (called_at - lag(called_at) OVER (ORDER BY called_at, session_id, call_index)))::numeric AS gap_seconds FROM calls) SELECT round(avg(gap_seconds), 1) AS avg_interval_seconds FROM gaps WHERE gap_seconds IS NOT NULL"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "title": "Merged call timeline (tokens per call, coloured by session)",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "options": {
+        "xField": "family_call_index",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "showValue": "never",
+        "stacking": "normal",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "axisLabel": "tokens",
+            "axisWidth": 60
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "family_call_index"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "merged call (by timestamp)"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))) SELECT family_call_index, member_label, sum(total_input_tokens + output_tokens) AS tokens FROM calls GROUP BY family_call_index, member_label ORDER BY family_call_index, member_label"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "member_label",
+            "rowField": "family_call_index",
+            "valueField": "tokens",
+            "emptyValue": "zero"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "family_call_index\\member_label": "family_call_index"
+            },
+            "excludeByName": {},
+            "indexByName": {}
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "targetField": "family_call_index",
+                "destinationType": "number"
+              }
+            ],
+            "fields": {}
+          }
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "title": "Cumulative tokens over wall-clock time, by session",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineInterpolation": "stepAfter",
+            "showPoints": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))) SELECT called_at AS time, member_label AS metric, sum(sum(total_input_tokens + output_tokens)) OVER (PARTITION BY member_label ORDER BY called_at) AS value FROM calls GROUP BY called_at, member_label ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "title": "Cache-read % by merged call",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "options": {
+        "xField": "family_call_index",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "showValue": "never",
+        "stacking": "none",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "axisLabel": "cache-read %",
+            "axisWidth": 60
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 60
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "family_call_index"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "merged call (by timestamp)"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))) SELECT family_call_index, round(cache_read_tokens::numeric / NULLIF(total_input_tokens, 0) * 100, 2) AS cache_read_pct FROM calls ORDER BY family_call_index"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "title": "Time between merged calls (s)",
+      "type": "barchart",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "options": {
+        "xField": "family_call_index",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "showValue": "never",
+        "stacking": "none",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "axisLabel": "seconds since previous call",
+            "axisWidth": 60
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 300
+              },
+              {
+                "color": "dark-blue",
+                "value": 3600
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "family_call_index"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "merged call (by timestamp)"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))), gaps AS (SELECT family_call_index, EXTRACT(EPOCH FROM (called_at - lag(called_at) OVER (ORDER BY called_at, session_id, call_index)))::numeric AS gap_seconds FROM calls) SELECT family_call_index, gap_seconds FROM gaps WHERE gap_seconds IS NOT NULL ORDER BY family_call_index"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "title": "Family members (legend)",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "session_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open session detail",
+                    "url": "/d/acp-session-detail/session-detail?var-session_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "parent_session_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open session detail",
+                    "url": "/d/acp-session-detail/session-detail?var-session_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT m.member_index, m.member_label, m.session_id, m.session_role, m.parent_session_id, m.project_dir, m.first_event_at, m.api_calls, m.total_input_tokens, m.output_tokens, m.duration_seconds, (NOT (${scope:sqlstring} = 'all' OR NOT m.is_last_member)) AS excluded FROM claude.v_session_family_member m WHERE m.root_session_id = ${root_session_id:sqlstring} ORDER BY m.member_index"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "Agent / subagent breakdown",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))) SELECT agent, agent_type, depth, parent_agent, sum(total_input_tokens + output_tokens) AS tokens, count(*) AS calls FROM calls GROUP BY agent, agent_type, depth, parent_agent ORDER BY tokens DESC"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "title": "Model mix",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 51
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))) SELECT model, count(*) AS calls, sum(total_input_tokens + output_tokens) AS tokens FROM calls GROUP BY model ORDER BY tokens DESC"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "title": "Tokens per session",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 51
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "WITH calls AS (SELECT f.*, row_number() OVER (ORDER BY f.called_at, f.session_id, f.call_index) AS family_call_index FROM claude.v_family_call_detail f WHERE f.root_session_id = ${root_session_id:sqlstring} AND (${scope:sqlstring} = 'all' OR NOT f.is_last_member) AND ('${model:csv}' = '' OR f.model = ANY(string_to_array('${model:csv}', ',')))) SELECT member_label, count(*) AS calls, sum(total_input_tokens + output_tokens) AS tokens, min(called_at) AS first_call_at, max(called_at) AS last_call_at FROM calls GROUP BY member_label ORDER BY member_label"
+        }
+      ]
+    }
+  ]
+}

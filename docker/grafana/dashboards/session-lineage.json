@@ -127,7 +127,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT f.root_session_id, f.chain_length, f.distinct_models, f.total_api_calls, f.total_input_tokens, f.total_output_tokens, f.family_span_seconds, f.family_first_event_at, f.family_last_event_at FROM claude.v_session_family f ORDER BY f.family_first_event_at DESC"
+          "rawSql": "SELECT f.root_session_id, f.chain_length, CASE WHEN f.chain_length > 1 THEN f.root_session_id END AS combined_view, f.distinct_models, f.total_api_calls, f.total_input_tokens, f.total_output_tokens, f.family_span_seconds, f.family_first_event_at, f.family_last_event_at FROM claude.v_session_family f ORDER BY f.family_first_event_at DESC"
         }
       ],
       "fieldConfig": {
@@ -142,6 +142,22 @@
                   {
                     "title": "Open session detail",
                     "url": "/d/acp-session-detail/session-detail?var-session_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "combined_view" },
+            "properties": [
+              { "id": "displayName", "value": "combined family view" },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open combined family dashboard",
+                    "url": "/d/acp-session-family/session-family?var-root_session_id=${__value.raw}&var-scope=all",
                     "targetBlank": false
                   }
                 ]
