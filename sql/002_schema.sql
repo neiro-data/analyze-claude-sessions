@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS claude.sessions (
     project_id          integer     NOT NULL REFERENCES claude.projects (project_id) ON DELETE CASCADE,
     ai_title            text,
     cwd                 text,
+    parent_session_id   uuid,
     transcript_count    integer     NOT NULL DEFAULT 0,
     subagent_count      integer     NOT NULL DEFAULT 0,
     first_event_at      timestamptz,
@@ -58,6 +59,14 @@ CREATE TABLE IF NOT EXISTS claude.sessions (
 
 CREATE INDEX IF NOT EXISTS sessions_project_idx     ON claude.sessions (project_id);
 CREATE INDEX IF NOT EXISTS sessions_first_event_idx ON claude.sessions (first_event_at);
+CREATE INDEX IF NOT EXISTS sessions_parent_idx
+    ON claude.sessions (parent_session_id) WHERE parent_session_id IS NOT NULL;
+
+COMMENT ON COLUMN claude.sessions.parent_session_id IS
+    'Origin session uuid as claimed by the child''s first user prompt (the '
+    '"Origin session_id: <uuid>" marker left by the clear-cache-sonnet-low '
+    'handoff). Unvalidated and not a foreign key: the parent may live under a '
+    'different project dir, be pruned, or never be ingested at all.';
 
 -- ---------------------------------------------------------------------------
 -- Metadata: one row per .jsonl file

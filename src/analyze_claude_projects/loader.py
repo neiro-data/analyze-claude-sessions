@@ -130,16 +130,19 @@ def upsert_session(
     """
     row = conn.execute(
         """
-        INSERT INTO claude.sessions (session_id, project_id, ai_title, cwd)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO claude.sessions (session_id, project_id, ai_title, cwd, parent_session_id)
+        VALUES (%s, %s, %s, %s, %s)
         ON CONFLICT (session_id) DO UPDATE SET
-            project_id = EXCLUDED.project_id,
-            ai_title   = COALESCE(EXCLUDED.ai_title, claude.sessions.ai_title),
-            cwd        = COALESCE(EXCLUDED.cwd, claude.sessions.cwd),
-            updated_at = now()
+            project_id        = EXCLUDED.project_id,
+            ai_title          = COALESCE(EXCLUDED.ai_title, claude.sessions.ai_title),
+            cwd               = COALESCE(EXCLUDED.cwd, claude.sessions.cwd),
+            parent_session_id = COALESCE(
+                EXCLUDED.parent_session_id, claude.sessions.parent_session_id
+            ),
+            updated_at        = now()
         RETURNING (xmax = 0) AS inserted
         """,
-        (str(session_id), project_id, meta.ai_title, meta.cwd),
+        (str(session_id), project_id, meta.ai_title, meta.cwd, meta.origin_session_id),
     ).fetchone()
     if row is None:  # pragma: no cover - RETURNING always yields a row
         raise LoadError(f"Could not upsert session {session_id}")
