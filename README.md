@@ -76,10 +76,17 @@ Grafana runs with anonymous Editor access and no login, by design for local sing
 the port is bound to `127.0.0.1` only — don't expose it beyond localhost.
 
 Both dashboards render in UTC and carry a `Model` filter (defaults to all models combined).
-The overview shows token/call/duration totals plus time series and a session explorer; the
-session detail dashboard breaks a single session down per API call (tokens, cache-read %,
-context growth, time between calls) with a Cache-read % color code (green ≥90%, yellow
-60–90%, red <60%) shared across both dashboards.
+The overview shows token/call/duration totals plus time series and a session explorer; its
+"Cache efficiency" panel stacks cache-write and cache-read token bars (right axis) under the
+cache-read % line (left axis) — the bar total is cache tokens only, not total input tokens.
+The session detail dashboard's session picker lists raw session UUIDs, and a header panel
+above the stat row shows the AI-generated session title (falling back to the UUID when none
+exists). It breaks a single session down per API call (tokens, cache-read %, context growth,
+time between calls) with a Cache-read % color code (green ≥90%, yellow 60–90%, red <60%)
+shared across both dashboards. The "Call timeline" panel stacks per-model token bars (one
+colour per model) when Model = All. "Context growth by call" is colored blue for negative
+growth, green 0–500 tokens, yellow 500–2k, orange 2k–10k, red >10k. "Time between calls" is
+colored green <10s, yellow 10–30s, orange 30s–5m, red 5m–1h, dark blue >1h.
 
 ## How it fits together
 
