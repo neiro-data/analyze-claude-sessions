@@ -1,0 +1,223 @@
+{
+  "uid": "acp-session-lineage",
+  "title": "Session Lineage",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "utc",
+  "time": { "from": "now-30d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "role",
+        "label": "Role",
+        "type": "custom",
+        "query": "parent,child,standalone",
+        "multi": true,
+        "includeAll": true,
+        "allValue": "",
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+        "query": "SELECT DISTINCT model AS __text, model AS __value FROM claude.api_calls WHERE model IS NOT NULL ORDER BY model",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "",
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Child sessions",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS child_sessions FROM claude.v_session_lineage l WHERE l.is_child AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ',')))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Parent sessions",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS parent_sessions FROM claude.v_session_lineage l WHERE l.is_parent AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ',')))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Families",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS families FROM claude.v_session_family f WHERE f.chain_length > 1"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Orphan children",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS orphan_children FROM claude.v_session_lineage l WHERE l.is_child AND NOT l.parent_ingested AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ',')))"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Session families",
+      "type": "table",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT f.root_session_id, f.chain_length, f.distinct_models, f.total_api_calls, f.total_input_tokens, f.total_output_tokens, f.family_span_seconds, f.family_first_event_at, f.family_last_event_at FROM claude.v_session_family f ORDER BY f.family_first_event_at DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "root_session_id" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open session detail",
+                    "url": "/d/acp-session-detail/session-detail?var-session_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "title": "Sessions",
+      "type": "table",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 13 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT l.session_id, l.session_role, l.parent_session_id, l.parent_ingested, sts.project_dir, sts.total_input_tokens, sts.output_tokens, sts.api_calls, sts.duration_seconds FROM claude.v_session_lineage l JOIN claude.v_session_token_summary sts USING (session_id) WHERE $__timeFilter(sts.first_event_at) AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = l.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) ORDER BY sts.first_event_at DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "session_id" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open session detail",
+                    "url": "/d/acp-session-detail/session-detail?var-session_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "parent_session_id" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open session detail",
+                    "url": "/d/acp-session-detail/session-detail?var-session_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "title": "Tokens over time by role",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 23 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT gs AS time, l.session_role, coalesce(sum(c.total_input_tokens),0) + coalesce(sum(c.output_tokens),0) AS tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END LEFT JOIN claude.v_session_lineage l ON l.session_id = c.session_id WHERE ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs, l.session_role ORDER BY gs"
+        }
+      ]
+    }
+  ]
+}

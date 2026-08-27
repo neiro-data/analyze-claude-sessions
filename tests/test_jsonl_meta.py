@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
 from analyze_claude_projects.jsonl_meta import extract_metadata, parse_timestamp
+
+from .conftest import SESSION_ID
 
 
 def test_extracts_session_shape(transcript: Path) -> None:
@@ -49,6 +52,73 @@ def test_malformed_lines_are_counted_not_fatal(transcript: Path) -> None:
 
     assert meta.malformed_lines == 1
     assert meta.record_count == 5
+
+
+def _prepend_user_record(
+    transcript: Path, content: str, sidechain_session_id: str | None = None
+) -> None:
+    """Insert a ``user`` record with *content* at the very start of the fixture transcript."""
+    record: dict[str, object] = {
+        "type": "user",
+        "uuid": "aaaaaaaa-0000-4000-8000-000000000001",
+        "timestamp": "2026-08-08T11:49:34.000Z",
+        "sessionId": sidechain_session_id or str(SESSION_ID),
+        "message": {"role": "user", "content": content},
+    }
+    lines = transcript.read_text(encoding="utf-8").splitlines()
+    lines.insert(0, json.dumps(record))
+    transcript.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+ORIGIN_ID = "a9785b16-3425-46c9-aea3-3ae920bed50c"
+
+
+def test_origin_session_id_captured_at_start_of_first_prompt(transcript: Path) -> None:
+    _prepend_user_record(transcript, f"Origin session_id: {ORIGIN_ID}. Read the plan.")
+
+    meta = extract_metadata(transcript)
+
+    assert meta.origin_session_id == ORIGIN_ID
+
+
+def test_origin_session_id_ignored_mid_message(transcript: Path) -> None:
+    _prepend_user_record(transcript, f"See discussion of Origin session_id: {ORIGIN_ID} below.")
+
+    meta = extract_metadata(transcript)
+
+    assert meta.origin_session_id is None
+
+
+def test_origin_session_id_ignored_on_last_prompt_record(transcript: Path) -> None:
+    lines = transcript.read_text(encoding="utf-8").splitlines()
+    lines.insert(
+        0,
+        json.dumps(
+            {
+                "type": "last-prompt",
+                "lastPrompt": f"Origin session_id: {ORIGIN_ID}. Read the …",
+            }
+        ),
+    )
+    transcript.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    meta = extract_metadata(transcript)
+
+    assert meta.origin_session_id is None
+
+
+def test_origin_session_id_self_reference_ignored(transcript: Path) -> None:
+    _prepend_user_record(transcript, f"Origin session_id: {SESSION_ID}. Read the plan.")
+
+    meta = extract_metadata(transcript)
+
+    assert meta.origin_session_id is None
+
+
+def test_origin_session_id_absent_by_default(transcript: Path) -> None:
+    meta = extract_metadata(transcript)
+
+    assert meta.origin_session_id is None
 
 
 def test_parse_timestamp_handles_z_suffix_and_junk() -> None:

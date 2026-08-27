@@ -71,7 +71,8 @@ that group. Every other `acp` command works without it.
 
 `make dashboard` (or `make up-grafana`) starts PostgreSQL plus a provisioned Grafana instance
 at `http://localhost:${GRAFANA_PORT:-3000}` — datasource and dashboards (usage overview,
-per-session detail) are loaded automatically from `docker/grafana/`, no manual import needed.
+per-session detail, session lineage) are loaded automatically from `docker/grafana/`, no manual
+import needed.
 Grafana runs with anonymous Editor access and no login, by design for local single-user use;
 the port is bound to `127.0.0.1` only — don't expose it beyond localhost.
 
@@ -87,6 +88,16 @@ shared across both dashboards. The "Call timeline" panel stacks per-model token 
 colour per model) when Model = All. "Context growth by call" is colored blue for negative
 growth, green 0–500 tokens, yellow 500–2k, orange 2k–10k, red >10k. "Time between calls" is
 colored green <10s, yellow 10–30s, orange 30s–5m, red 5m–1h, dark blue >1h.
+
+The session lineage dashboard tracks parent/child spawn chains: a session's `Origin
+session_id: <uuid>` marker (left by the `clear-cache-sonnet-low` handoff at the start of a
+child's first prompt) is captured into `sessions.parent_session_id`. It carries a `Role` filter
+(`parent` / `child` / `standalone`, default all) alongside the shared `Model` filter, a stat row
+(child/parent/family/orphan-child counts), a "Session families" table rolling up each chain's
+length, models used, and total tokens end to end, and a "Sessions" table with data links on both
+`session_id` and `parent_session_id`. `parent_session_id` is unvalidated and not a foreign key —
+the parent may never get ingested — so `parent_ingested` distinguishes a resolved parent from a
+merely claimed one. Wiring the role toggle into the other two dashboards is not done yet.
 
 ## How it fits together
 
@@ -133,7 +144,7 @@ transcripts.
 | Table | Grain |
 | --- | --- |
 | `projects` | one directory under `~/.claude/projects` |
-| `sessions` | one Claude Code session, rolled up from its transcripts |
+| `sessions` | one Claude Code session, rolled up from its transcripts; `parent_session_id` is the claimed origin session (unvalidated, no FK) |
 | `transcripts` | one `.jsonl` file (`kind` = `session` \| `subagent`), with size, sha256, time window, models, CLI versions, git branches, per-type record counts |
 | `transcript_record_types` | `(transcript_id, type, subtype)` histogram |
 
@@ -149,7 +160,9 @@ transcripts.
 **Views** — `v_transcript_token_summary`, `v_session_token_summary`,
 `v_project_token_summary`, `v_daily_token_usage`, `v_subagent_share`,
 `v_call_cache_efficiency` (per-call cache % and context growth),
-`v_long_gaps` (gaps ≥ 5 min), `v_ingest_status`.
+`v_long_gaps` (gaps ≥ 5 min), `v_ingest_status`, `v_session_lineage` (per-session
+parent/child role, resolved root and depth, cycle-safe), `v_session_family` (per-root chain
+rollup: length, models, total calls/tokens, first→last span).
 
 ## `pg_parquet`
 

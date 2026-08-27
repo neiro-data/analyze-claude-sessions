@@ -8,15 +8,25 @@ claude.sessions / claude.session_record_types.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import orjson
 
 _READ_CHUNK = 1 << 20
+
+# Matches the marker the clear-cache-sonnet-low handoff prepends to a child
+# session's first user prompt: `echo "Origin session_id: ${SESSION_ID}"`.
+# Anchored at the start so a session merely *discussing* the marker mid-
+# conversation doesn't false-positive.
+_ORIGIN_SESSION_RE = re.compile(
+    r"^\s*Origin session_id:\s*([0-9a-fA-F-]{36})", re.IGNORECASE
+)
 
 
 @dataclass(slots=True)
@@ -36,6 +46,7 @@ class SessionMetadata:
     cli_versions: list[str] = field(default_factory=list)
     models: list[str] = field(default_factory=list)
     ai_title: str | None = None
+    origin_session_id: str | None = None
     is_sidechain: bool = False
     user_message_count: int = 0
     assistant_msg_count: int = 0
@@ -62,6 +73,38 @@ def _digest(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _extract_origin_session_id(message: object) -> str | None:
+    """Pull the ``Origin session_id: <uuid>`` marker off a ``user`` message body.
+
+    ``message.content`` is either a plain string or a list of content blocks;
+    only the first ``text`` block is inspected, matching how the handoff
+    wrapper prepends the marker as plain text ahead of the actual prompt.
+    """
+    if not isinstance(message, dict):
+        return None
+    content = message.get("content")
+    text: str | None = None
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                block_text = block.get("text")
+                if isinstance(block_text, str):
+                    text = block_text
+                break
+    if not text:
+        return None
+    match = _ORIGIN_SESSION_RE.match(text)
+    if not match:
+        return None
+    candidate = match.group(1)
+    try:
+        return str(UUID(candidate))
+    except ValueError:
+        return None
+
+
 def _note(bucket: list[str], value: object) -> None:
     if isinstance(value, str) and value and value not in bucket:
         bucket.append(value)
@@ -78,6 +121,7 @@ def extract_metadata(path: Path) -> SessionMetadata:
     )
     request_ids: set[str] = set()
     cwd_votes: Counter[str] = Counter()
+    own_session_ids: set[str] = set()
 
     with path.open("rb") as handle:
         for line in handle:
@@ -94,7 +138,13 @@ def extract_metadata(path: Path) -> SessionMetadata:
                 continue
 
             meta.record_count += 1
+            if session_id := record.get("sessionId"):
+                if isinstance(session_id, str):
+                    own_session_ids.add(session_id.lower())
             _absorb(meta, record, request_ids, cwd_votes)
+
+    if meta.origin_session_id and meta.origin_session_id.lower() in own_session_ids:
+        meta.origin_session_id = None
 
     meta.api_call_count = len(request_ids)
     if cwd_votes:
@@ -133,6 +183,8 @@ def _absorb(
             meta.ai_title = title
     elif record_type == "user":
         meta.user_message_count += 1
+        if meta.origin_session_id is None:
+            meta.origin_session_id = _extract_origin_session_id(record.get("message"))
     elif record_type == "assistant":
         meta.assistant_msg_count += 1
         message = record.get("message")
