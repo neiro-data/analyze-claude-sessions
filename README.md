@@ -49,8 +49,9 @@ Run it from the project root with `uv`:
 
 ```bash
 uv run acp ask "how many tokens were spent per model?"
-# scope a session-specific query with session_id=<id>:
+# scope a session-specific query with session_id=<id>, or just paste a bare UUID:
 uv run acp ask "cache report session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5"
+uv run acp ask "1500e4c2-9021-4496-860e-5f99ec8ee7f5 cache report"
 ```
 
 (`acp` also lives **inside the app container** — `docker compose run --rm app ask "…"`,
@@ -61,6 +62,23 @@ seeded by `sql/005_nlp_catalog.sql`) using local sentence embeddings, then runs 
 match read-only. Fully offline — no network access or API key. Add `--sql` to see the
 matched query, `--no-execute` to only preview it. If nothing matches confidently, it prints
 the closest candidate questions instead of guessing.
+
+**Slot-aware matching.** Each catalog row declares the filters its SQL can actually bind
+(`session_id`, `since`, `project`, `model`, `limit` — see the `slots` column). Your question
+is parsed for the same filters (`session_id=<id>` or a bare UUID; `since 2026-01[-15]`;
+`last N days`; `last month`, meaning the previous calendar month, not a trailing 30-day
+window; a known project or model name; `top N`). If the best-matching row can't bind a
+filter your question carries — e.g. "tokens per model **last month**" matching the all-time
+"tokens per model" template — `ask` **refuses** rather than silently running the unfiltered
+query, and prints the near-matches instead:
+
+```
+$ uv run acp ask "tokens per model last month"
+Refusing: your question filters by since ('2026-02-01') but the closest match
+"how many tokens were spent per model" has no such filter. Try one of these instead:
+  [0.71] how many tokens were spent per model
+  ...
+```
 
 The embedding model (numpy, sentence-transformers) lives in the optional `nlp` dependency
 group. The app image ships without it, so `ask` prints an install hint if it is missing;
@@ -229,8 +247,15 @@ make venv       # uv sync
 make check      # ruff + mypy --strict + pytest
 ```
 
-Ruff (100 cols, `E,F,I,W,UP,S,B`), `mypy --strict`, and 21 tests all pass. Tests mock nothing
-away that matters: the report tests shell out to the real script (skipped if `jq` is
-missing), and none of them need PostgreSQL.
+Ruff (100 cols, `E,F,I,W,UP,S,B`), `mypy --strict`, and the default test suite all pass. Tests
+mock nothing away that matters: the report tests shell out to the real script (skipped if
+`jq` is missing), and none of them need PostgreSQL.
+
+`acp ask`'s retrieval quality is tracked separately: `uv run pytest -m slow tests/test_nlp_eval.py -s`
+loads the real embedding model against `tests/data/nlp_eval.yaml` (paraphrases per catalog
+entry, plus out-of-catalog questions) and prints recall@1, recall@3, and a false-accept
+rate. It's marked `slow` and excluded from `make check` / the default `pytest` run since it
+loads a real model; run it by hand when changing retrieval and compare against the last
+printed numbers.
 
 See `HANDOFF.md` for what to do next.

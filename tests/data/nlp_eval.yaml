@@ -1,0 +1,189 @@
+# Retrieval eval corpus for `CatalogRetriever` (see tests/test_nlp_eval.py).
+#
+# Each top-level key under `catalog` is the exact `question` of a
+# claude.nlp_examples row (from sql/005_nlp_catalog.sql); its `paraphrases`
+# are hand-written rewordings that should still retrieve that row at rank 1
+# (recall@1) or within the top 3 (recall@3). `out_of_catalog` lists questions
+# that carry a filter (or ask something) no catalog row supports and that
+# `ask` must refuse or reject, not answer with a wrong/unfiltered row --
+# false-accept rate is the fraction of these that wrongly get accepted.
+#
+# Labelling is hand-written judgement, not ground truth: treat recall numbers
+# as a relative baseline across code changes, not an absolute quality claim.
+
+catalog:
+  how many sessions are there:
+    paraphrases:
+      - how many sessions do we have
+      - total number of sessions
+      - count all sessions
+      - session count
+
+  how many projects are there:
+    paraphrases:
+      - how many projects do we have
+      - total number of projects
+      - count all projects
+      - project count
+
+  how many transcripts are there:
+    paraphrases:
+      - how many transcripts do we have
+      - total number of transcripts
+      - count all transcripts
+
+  how many subagent transcripts are there:
+    paraphrases:
+      - how many subagent transcripts do we have
+      - count of subagent transcripts
+      - total number of subagent transcripts
+
+  how many api calls are there:
+    paraphrases:
+      - how many api calls do we have
+      - total number of api calls
+      - count all api calls
+
+  how many tokens were spent per model:
+    paraphrases:
+      - what is the total tokens per model
+      - tokens spent per model
+      - how many tokens did each model use
+      - total token usage by model
+      - token counts grouped by model
+
+  total tokens per project:
+    paraphrases:
+      - tokens used per project
+      - how many tokens per project
+      - total token usage by project
+
+  total tokens per day:
+    paraphrases:
+      - tokens used per day
+      - daily token usage
+      - token usage trend by day
+
+  tokens by subagent vs main:
+    paraphrases:
+      - subagent vs main token split
+      - how do subagent and main token usage compare
+      - main vs subagent tokens
+
+  top 10 sessions by total tokens:
+    paraphrases:
+      - top ten sessions by tokens
+      - which sessions used the most tokens
+      - sessions with the highest token usage
+
+  top 10 projects by tokens:
+    paraphrases:
+      - top ten projects by tokens
+      - which projects used the most tokens
+      - projects with the highest token usage
+
+  what is the average session duration:
+    paraphrases:
+      - average session length
+      - how long do sessions last on average
+      - mean session duration
+
+  what is the overall cache read percentage:
+    paraphrases:
+      - overall cache hit rate
+      - what percentage of tokens came from cache
+      - cache read percentage overall
+
+  what are the longest gaps between calls:
+    paraphrases:
+      - biggest pauses between api calls
+      - longest delays between calls
+      - largest gaps between consecutive calls
+
+  which model is used most:
+    paraphrases:
+      - most used model
+      - what model is used the most
+      - which model has the most calls
+
+  how many sessions per project:
+    paraphrases:
+      - session count per project
+      - number of sessions by project
+
+  output tokens per model:
+    paraphrases:
+      - output token usage by model
+      - how many output tokens per model
+
+  daily api call trend:
+    paraphrases:
+      - api calls per day
+      - daily trend of api calls
+
+  what is the total number of tokens overall:
+    paraphrases:
+      - grand total of tokens
+      - total tokens across everything
+      - overall token total
+
+  cache report:
+    paraphrases:
+      - cache report session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - cache write read reuse for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - per-agent cache report session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+
+  tokens spent in this session:
+    paraphrases:
+      - tokens used in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - total tokens for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - how many tokens did session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5 use
+
+  tokens spent per model in this session:
+    paraphrases:
+      - tokens per model for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - model breakdown of tokens in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+
+  tokens spent per agent in this session:
+    paraphrases:
+      - tokens per agent for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - agent breakdown of tokens in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+
+  number of calls in this session:
+    paraphrases:
+      - how many calls in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - call count for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+
+  number of calls per agent in this session:
+    paraphrases:
+      - calls per agent for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - agent call breakdown in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+
+  complete session output ordered by time:
+    paraphrases:
+      - full timeline for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - chronological call log for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+
+  session summary:
+    paraphrases:
+      - summary for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - token summary of session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+
+  longest gaps in this session:
+    paraphrases:
+      - biggest pauses in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+      - longest delays within session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5
+
+# Questions that carry a filter no catalog row can bind, or are otherwise
+# unanswerable from the catalog. `ask` must refuse these, not silently return
+# an unfiltered/wrong answer -- this is the failure mode the slot-aware
+# matcher exists to close.
+out_of_catalog:
+  - tokens per model last month
+  - how many tokens were spent per model since 2026-01
+  - tokens per model in the last 7 days
+  - top 5 sessions by total tokens
+  - total tokens for project billing
+  - tokens spent per model using claude-sonnet-5
+  - what is the weather today
+  - how many pull requests were merged last week

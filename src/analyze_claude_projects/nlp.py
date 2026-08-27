@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -26,6 +27,26 @@ SESSION_SCOPED_TAG = "session_scoped"
 # capture to that set stops trailing sentence punctuation (`,` `.` `?`) from
 # being swallowed into the id, which would otherwise fail the uuid cast.
 _SESSION_ID_RE = re.compile(r"session_id\s*=\s*([\w-]+)", re.IGNORECASE)
+
+#: A bare pasted UUID, with no `session_id=` prefix required.
+_BARE_UUID_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
+
+#: Explicit dates: `since 2026-01-31`, `since 2026-01` (day defaults to the 1st).
+_SINCE_DATE_RE = re.compile(r"\bsince\s+(\d{4}-\d{2}(?:-\d{2})?)\b", re.IGNORECASE)
+
+#: `last N days` / `last N day` -> a trailing rolling window.
+_LAST_N_DAYS_RE = re.compile(r"\blast\s+(\d+)\s+days?\b", re.IGNORECASE)
+
+#: `last month` -> the previous calendar month (see `_last_calendar_month`).
+_LAST_MONTH_RE = re.compile(r"\blast\s+month\b", re.IGNORECASE)
+
+#: `top N` -> a row-count limit.
+_TOP_N_RE = re.compile(r"\btop\s+(\d+)\b", re.IGNORECASE)
+
+#: Slot type names a catalog row may declare and `extract_slots` may emit.
+SLOT_TYPES = ("session_id", "since", "project", "model", "limit")
 
 #: Default local embedding model; small, CPU-friendly, good general recall.
 DEFAULT_MODEL_NAME = "all-MiniLM-L6-v2"
@@ -74,6 +95,27 @@ class NlpDependencyError(RuntimeError):
 
 class UnsafeQueryError(ValueError):
     """Raised when a SQL string is not a single, read-only SELECT/WITH statement."""
+
+
+class UnboundFilterError(ValueError):
+    """Raised when the question carries a filter the matched template can't bind.
+
+    Attributes:
+        unbindable: slot names present in the question but not declared by
+            the matched example (e.g. `["since"]`).
+    """
+
+    def __init__(self, unbindable: list[str]) -> None:
+        self.unbindable = unbindable
+        super().__init__(f"unbindable slots: {', '.join(unbindable)}")
+
+
+@dataclass(frozen=True)
+class SlotSpec:
+    """A typed filter a catalog row's `sql_text` can bind, in placeholder order."""
+
+    name: str
+    type: str
 
 
 class Backend(Protocol):
@@ -149,6 +191,7 @@ class NlpExample:
     sql_text: str
     description: str | None = None
     tags: tuple[str, ...] = ()
+    slots: tuple[SlotSpec, ...] = ()
 
 
 def _cosine_similarity(
@@ -189,6 +232,8 @@ def load_examples(rows: list[dict[str, Any]]) -> list[NlpExample]:
     examples = []
     for row in rows:
         tags = row.get("tags") or ()
+        raw_slots = row.get("slots") or ()
+        slots = tuple(SlotSpec(name=str(s["name"]), type=str(s["type"])) for s in raw_slots)
         examples.append(
             NlpExample(
                 example_id=int(row["example_id"]),
@@ -196,25 +241,148 @@ def load_examples(rows: list[dict[str, Any]]) -> list[NlpExample]:
                 sql_text=str(row["sql_text"]),
                 description=None if row.get("description") is None else str(row["description"]),
                 tags=tuple(tags),
+                slots=slots,
             )
         )
     return examples
 
 
 def extract_session_id(question: str) -> tuple[str | None, str]:
-    """Pull a `session_id=<value>` token out of *question*, if present.
+    """Pull a `session_id=<value>` token, or a bare pasted UUID, out of *question*.
 
-    Returns the extracted session id and the question with that token
-    removed (leftover whitespace collapsed). Returns `(None, question)`
-    unchanged when no such token is found.
+    Thin wrapper over `extract_slots` kept for existing callers/tests that
+    only care about the session_id slot. Returns the extracted session id and
+    the question with that token removed (leftover whitespace collapsed), or
+    `(None, question)` unchanged when no such token is found.
     """
-    match = _SESSION_ID_RE.search(question)
-    if not match:
-        return None, question
-    session_id = match.group(1)
-    cleaned = question[: match.start()] + question[match.end() :]
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return session_id, cleaned
+    slots, cleaned = extract_slots(question)
+    return slots.get("session_id"), cleaned
+
+
+def _last_calendar_month(today: date) -> date:
+    """First day of the calendar month before *today*'s month.
+
+    "last month" means the previous calendar month, not a trailing 30-day
+    window (that's `last N days`). E.g. on any day in March, this returns
+    February 1st.
+    """
+    first_of_this_month = today.replace(day=1)
+    last_day_of_prev_month = first_of_this_month - timedelta(days=1)
+    return last_day_of_prev_month.replace(day=1)
+
+
+def extract_slots(
+    question: str,
+    *,
+    known_projects: list[str] | None = None,
+    known_models: list[str] | None = None,
+    today: date | None = None,
+) -> tuple[dict[str, Any], str]:
+    """Pull typed filters out of *question*, most specific pattern first.
+
+    Recognises, in this order (each match is removed from the question before
+    the next pattern runs, so ranking later sees clean residual text):
+    a bare UUID or `session_id=<id>` -> `session_id`; an explicit
+    `since YYYY-MM[-DD]` -> `since` (a `date`); `last N days` -> `since`
+    (`today - N days`); `last month` -> `since` (the 1st of the previous
+    calendar month, see `_last_calendar_month`); a whole-token match against
+    *known_projects* -> `project`; a whole-token match against *known_models*
+    -> `model`; `top N` -> `limit` (an int).
+
+    Returns `(slots, cleaned_question)`. `slots` maps slot type name (one of
+    `SLOT_TYPES`) to its extracted value; a type absent from the question is
+    simply absent from the dict. `cleaned_question` has every matched span
+    removed and whitespace collapsed.
+    """
+    today = today or date.today()
+    known_projects = known_projects or []
+    known_models = known_models or []
+    slots: dict[str, Any] = {}
+    remaining = question
+
+    explicit_match = _SESSION_ID_RE.search(remaining)
+    if explicit_match:
+        slots["session_id"] = explicit_match.group(1)
+        remaining = _remove_span(remaining, explicit_match.start(), explicit_match.end())
+    else:
+        bare_match = _BARE_UUID_RE.search(remaining)
+        if bare_match:
+            slots["session_id"] = bare_match.group(0)
+            remaining = _remove_span(remaining, bare_match.start(), bare_match.end())
+
+    since_match = _SINCE_DATE_RE.search(remaining)
+    if since_match:
+        raw = since_match.group(1)
+        parts = [int(p) for p in raw.split("-")]
+        year, month = parts[0], parts[1]
+        day = parts[2] if len(parts) > 2 else 1
+        slots["since"] = date(year, month, day)
+        remaining = _remove_span(remaining, since_match.start(), since_match.end())
+    else:
+        last_n_match = _LAST_N_DAYS_RE.search(remaining)
+        if last_n_match:
+            days = int(last_n_match.group(1))
+            slots["since"] = today - timedelta(days=days)
+            remaining = _remove_span(remaining, last_n_match.start(), last_n_match.end())
+        else:
+            last_month_match = _LAST_MONTH_RE.search(remaining)
+            if last_month_match:
+                slots["since"] = _last_calendar_month(today)
+                remaining = _remove_span(
+                    remaining, last_month_match.start(), last_month_match.end()
+                )
+
+    project_match = _match_known_value(remaining, known_projects)
+    if project_match:
+        value, start, end = project_match
+        slots["project"] = value
+        remaining = _remove_span(remaining, start, end)
+
+    model_match = _match_known_value(remaining, known_models)
+    if model_match:
+        value, start, end = model_match
+        slots["model"] = value
+        remaining = _remove_span(remaining, start, end)
+
+    top_n_match = _TOP_N_RE.search(remaining)
+    if top_n_match:
+        slots["limit"] = int(top_n_match.group(1))
+        remaining = _remove_span(remaining, top_n_match.start(), top_n_match.end())
+
+    cleaned = re.sub(r"\s+", " ", remaining).strip()
+    return slots, cleaned
+
+
+def _remove_span(text: str, start: int, end: int) -> str:
+    """Delete `text[start:end]`, collapsing the gap it leaves."""
+    return text[:start] + text[end:]
+
+
+def _match_known_value(text: str, known_values: list[str]) -> tuple[str, int, int] | None:
+    """Find the longest whole-token, case-insensitive match of *known_values* in *text*.
+
+    Longest-first avoids a short value (e.g. "api") shadowing a longer one
+    that contains it (e.g. "api-gateway") when both are known values.
+    """
+    for value in sorted(known_values, key=len, reverse=True):
+        if not value:
+            continue
+        pattern = re.compile(rf"\b{re.escape(value)}\b", re.IGNORECASE)
+        match = pattern.search(text)
+        if match:
+            return value, match.start(), match.end()
+    return None
+
+
+def check_bindable(example: NlpExample, slots: dict[str, Any]) -> list[str]:
+    """Return the slot names *example* cannot bind, given the extracted *slots*.
+
+    A slot name present in *slots* but not among the types the example
+    declares in its `slots` (`SlotSpec.type`) is unbindable -- executing the
+    example's template would silently drop that filter.
+    """
+    declared_types = {spec.type for spec in example.slots}
+    return [name for name in slots if name not in declared_types]
 
 
 def count_placeholders(sql: str) -> int:
