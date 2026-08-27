@@ -274,10 +274,12 @@ def ask(
             CatalogRetriever,
             LocalEmbeddingBackend,
             NlpDependencyError,
+            UnboundFilterError,
             UnsafeQueryError,
+            check_bindable,
             count_placeholders,
             ensure_read_only,
-            extract_session_id,
+            extract_slots,
             filter_examples,
             load_examples,
         )
@@ -294,10 +296,24 @@ def ask(
         with connect(settings.database_url) as conn:
             rows = fetch_all(
                 conn,
-                "SELECT example_id, question, sql_text, description, tags FROM claude.nlp_examples",
+                "SELECT example_id, question, sql_text, description, tags, slots "
+                "FROM claude.nlp_examples",
             )
             examples = load_examples(rows)
-            session_id, clean_question = extract_session_id(question)
+            known_projects = [
+                r["dir_name"]
+                for r in fetch_all(conn, "SELECT DISTINCT dir_name FROM claude.projects")
+            ]
+            known_models = [
+                r["model"]
+                for r in fetch_all(
+                    conn, "SELECT DISTINCT model FROM claude.api_calls WHERE model IS NOT NULL"
+                )
+            ]
+            slots, clean_question = extract_slots(
+                question, known_projects=known_projects, known_models=known_models
+            )
+            session_id = slots.get("session_id")
             scoped_examples = filter_examples(examples, session_scoped=session_id is not None)
 
             if not scoped_examples:
@@ -327,6 +343,10 @@ def ask(
                     console.print(f"  [{score:.2f}] {example.question}")
                 raise typer.Exit(code=1)
 
+            unbindable = check_bindable(top_example, slots)
+            if unbindable:
+                raise UnboundFilterError(unbindable)
+
             console.print(
                 f"[green]Matched:[/green] {top_example.question} [dim](score {top_score:.2f})[/dim]"
             )
@@ -338,11 +358,31 @@ def ask(
             ensure_read_only(top_example.sql_text)
             conn.execute("SET TRANSACTION READ ONLY")
             conn.execute("SET LOCAL statement_timeout = '15s'")
-            # Every session-scoped catalog query binds the same `session_id` to
-            # each of its `%s` placeholders (all current ones use exactly one).
+            # Bind params in the row's declared slot order -- not by repeating
+            # a single value -- so a template with more than one distinct slot
+            # binds correctly. Every declared slot must resolve to an
+            # extracted value: an example that declares a slot type the
+            # question didn't carry is a catalog authoring bug (its filter
+            # would otherwise bind NULL/None), not a user error.
+            params = tuple(slots[spec.type] for spec in top_example.slots)
             n_placeholders = count_placeholders(top_example.sql_text)
-            result_rows = fetch_all(conn, top_example.sql_text, (session_id,) * n_placeholders)
+            if len(params) != n_placeholders:
+                raise UnsafeQueryError(
+                    f"catalog row {top_example.example_id!r} declares "
+                    f"{len(params)} slot(s) but sql_text has {n_placeholders} placeholder(s)"
+                )
+            result_rows = fetch_all(conn, top_example.sql_text, params)
         _render(result_rows, top_example.question)
+    except UnboundFilterError as exc:
+        filters = ", ".join(f"{name} ({slots[name]!r})" for name in exc.unbindable)
+        console.print(
+            f"[red]Refusing:[/red] your question filters by {filters} but the closest "
+            f'match "{top_example.question}" has no such filter. It does not run with the '
+            "filter silently dropped. Try one of these instead:"
+        )
+        for example, score in ranked:
+            console.print(f"  [{score:.2f}] {example.question}")
+        raise typer.Exit(code=1) from exc
     except NlpDependencyError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc

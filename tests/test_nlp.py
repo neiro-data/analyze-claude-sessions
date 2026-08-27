@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -18,10 +20,14 @@ from analyze_claude_projects.nlp import (
     LocalEmbeddingBackend,
     NlpDependencyError,
     NlpExample,
+    SlotSpec,
+    UnboundFilterError,
     UnsafeQueryError,
+    check_bindable,
     count_placeholders,
     ensure_read_only,
     extract_session_id,
+    extract_slots,
     filter_examples,
     load_examples,
 )
@@ -144,6 +150,145 @@ def test_extract_session_id_excludes_trailing_punctuation(trailing: str) -> None
 
     assert session_id == "abc-123"
     assert trailing not in session_id
+
+
+# --------------------------------------------------------------------------
+# extract_slots
+# --------------------------------------------------------------------------
+
+
+def test_extract_slots_bare_uuid_no_prefix_required() -> None:
+    slots, cleaned = extract_slots("11111111-1111-1111-1111-111111111111 cache report")
+
+    assert slots["session_id"] == "11111111-1111-1111-1111-111111111111"
+    assert cleaned == "cache report"
+
+
+def test_extract_slots_explicit_session_id_still_works() -> None:
+    slots, cleaned = extract_slots("cache report session_id=abc-123")
+
+    assert slots["session_id"] == "abc-123"
+    assert cleaned == "cache report"
+
+
+def test_extract_slots_since_explicit_date() -> None:
+    slots, cleaned = extract_slots("tokens per model since 2026-01-15")
+
+    assert slots["since"] == date(2026, 1, 15)
+    assert "since" not in cleaned
+
+
+def test_extract_slots_since_explicit_month_defaults_to_first_day() -> None:
+    slots, _cleaned = extract_slots("tokens per model since 2026-01")
+
+    assert slots["since"] == date(2026, 1, 1)
+
+
+def test_extract_slots_last_n_days() -> None:
+    slots, cleaned = extract_slots("tokens per model in the last 7 days", today=date(2026, 3, 10))
+
+    assert slots["since"] == date(2026, 3, 3)
+    assert "last 7 days" not in cleaned
+
+
+def test_extract_slots_last_month_is_previous_calendar_month() -> None:
+    slots, cleaned = extract_slots("tokens per model last month", today=date(2026, 3, 15))
+
+    assert slots["since"] == date(2026, 2, 1)
+    assert "last month" not in cleaned
+
+
+def test_extract_slots_last_month_across_year_boundary() -> None:
+    slots, _cleaned = extract_slots("tokens last month", today=date(2026, 1, 15))
+
+    assert slots["since"] == date(2025, 12, 1)
+
+
+def test_extract_slots_project_whole_token_match() -> None:
+    slots, cleaned = extract_slots(
+        "total tokens for project billing", known_projects=["billing", "web"]
+    )
+
+    assert slots["project"] == "billing"
+    assert "billing" not in cleaned
+
+
+def test_extract_slots_model_whole_token_match() -> None:
+    slots, cleaned = extract_slots(
+        "tokens spent per model using claude-sonnet-5",
+        known_models=["claude-sonnet-5", "claude-haiku-4-5"],
+    )
+
+    assert slots["model"] == "claude-sonnet-5"
+    assert "claude-sonnet-5" not in cleaned
+
+
+def test_extract_slots_project_does_not_match_substring() -> None:
+    """A known project name must match a whole token, not a substring of an
+    unrelated word (e.g. a project named "api" inside "api calls")."""
+    slots, cleaned = extract_slots("how many api calls are there", known_projects=["api"])
+
+    assert slots["project"] == "api"
+    assert cleaned == "how many calls are there"
+
+
+def test_extract_slots_top_n_is_limit() -> None:
+    slots, cleaned = extract_slots("top 5 sessions by total tokens")
+
+    assert slots["limit"] == 5
+    assert "top 5" not in cleaned
+
+
+def test_extract_slots_no_filters_present() -> None:
+    slots, cleaned = extract_slots("how many sessions are there")
+
+    assert slots == {}
+    assert cleaned == "how many sessions are there"
+
+
+# --------------------------------------------------------------------------
+# check_bindable / UnboundFilterError
+# --------------------------------------------------------------------------
+
+
+def test_check_bindable_no_unbindable_slots_when_declared() -> None:
+    example = NlpExample(
+        example_id=1,
+        question="cache report",
+        sql_text="SELECT 1 WHERE session_id = %s",
+        slots=(SlotSpec(name="session_id", type="session_id"),),
+    )
+
+    assert check_bindable(example, {"session_id": "abc-123"}) == []
+
+
+def test_check_bindable_flags_undeclared_since_filter() -> None:
+    """The core regression this PR fixes: a "last month" filter on a
+    template with no time slot must be refused, not silently dropped."""
+    example = NlpExample(
+        example_id=1,
+        question="how many tokens were spent per model",
+        sql_text="SELECT model, sum(output_tokens) FROM claude.api_calls GROUP BY model",
+        slots=(),
+    )
+
+    unbindable = check_bindable(example, {"since": date(2026, 2, 1)})
+
+    assert unbindable == ["since"]
+
+
+def test_check_bindable_flags_multiple_undeclared_slots() -> None:
+    example = NlpExample(example_id=1, question="q", sql_text="SELECT 1", slots=())
+
+    unbindable = check_bindable(example, {"since": date(2026, 2, 1), "project": "billing"})
+
+    assert set(unbindable) == {"since", "project"}
+
+
+def test_unbound_filter_error_carries_slot_names() -> None:
+    exc = UnboundFilterError(["since", "project"])
+
+    assert exc.unbindable == ["since", "project"]
 
 
 # --------------------------------------------------------------------------
@@ -429,6 +574,52 @@ def test_load_examples_maps_rows() -> None:
 
 
 # --------------------------------------------------------------------------
+# Catalog invariant: every row's declared slot count matches its %s count.
+#
+# Parses sql/005_nlp_catalog.sql directly rather than querying a live DB, so
+# it runs in the default (no-DB, no-network) test path but still checks the
+# exact file that ships to both fresh and migrated installs.
+# --------------------------------------------------------------------------
+
+_CATALOG_SQL_PATH = Path(__file__).parent.parent / "sql" / "005_nlp_catalog.sql"
+
+
+def _parse_catalog_rows() -> list[tuple[str, list[dict[str, str]]]]:
+    """Return (sql_text, slots) for every row in the 005 catalog INSERT."""
+    import json
+
+    text = _CATALOG_SQL_PATH.read_text()
+    _, rest = text.split("VALUES\n", 1)
+    body, _ = rest.rsplit("\nON CONFLICT", 1)
+    rows = []
+    for chunk in re.split(r"\n\),\n\(\n", body):
+        # sql_text is the *first* single-quoted literal in the tuple (the
+        # question is the literal before it).
+        first_literal = re.match(
+            r"\(?\s*'((?:[^']|'')*)',\s*\n\s*'((?:[^']|'')*(?:\n(?:[^']|'')*)*?)',",
+            chunk,
+            re.DOTALL,
+        )
+        assert first_literal, f"could not parse a catalog row:\n{chunk[:200]}"
+        sql_text = first_literal.group(2).replace("''", "'")
+        slots_match = re.search(r"('\[.*?\]')::jsonb", chunk, re.DOTALL)
+        assert slots_match, f"row has no slots literal:\n{chunk[:200]}"
+        slots = json.loads(slots_match.group(1)[1:-1])
+        rows.append((sql_text, slots))
+    return rows
+
+
+def test_catalog_slot_count_matches_placeholder_count() -> None:
+    rows = _parse_catalog_rows()
+    assert len(rows) == 28, "unexpected catalog row count -- update this test if intentional"
+    for sql_text, slots in rows:
+        assert count_placeholders(sql_text) == len(slots), (
+            f"placeholder/slot mismatch ({count_placeholders(sql_text)} vs "
+            f"{len(slots)} slots) in: {sql_text[:80]!r}"
+        )
+
+
+# --------------------------------------------------------------------------
 # CLI `ask`
 # --------------------------------------------------------------------------
 
@@ -443,6 +634,21 @@ def _fake_connect(database_url: str, **kwargs: Any):
     yield _FakeConnection()
 
 
+def _common_fetch_all(conn: Any, sql: str, *a: Any, **k: Any) -> list[dict[str, Any]]:
+    if "DISTINCT dir_name" in sql or "DISTINCT model" in sql:
+        return []
+    return [
+        {
+            "example_id": 1,
+            "question": "how many sessions",
+            "sql_text": "SELECT count(*) FROM claude.sessions",
+            "description": None,
+            "tags": [],
+            "slots": [],
+        }
+    ]
+
+
 def _patch_common(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli_mod, "connect", _fake_connect)
     monkeypatch.setattr(
@@ -450,19 +656,7 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> None:
         "get_settings",
         lambda: type("S", (), {"database_url": "postgresql://fake"})(),
     )
-    monkeypatch.setattr(
-        cli_mod,
-        "fetch_all",
-        lambda conn, sql, *a, **k: [
-            {
-                "example_id": 1,
-                "question": "how many sessions",
-                "sql_text": "SELECT count(*) FROM claude.sessions",
-                "description": None,
-                "tags": [],
-            }
-        ],
-    )
+    monkeypatch.setattr(cli_mod, "fetch_all", _common_fetch_all)
 
 
 def test_ask_cli_sql_no_execute_prints_matched_sql(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -483,6 +677,48 @@ def test_ask_cli_sql_no_execute_prints_matched_sql(monkeypatch: pytest.MonkeyPat
     assert result.exit_code == 0, result.output
     assert "Matched:" in result.output
     assert "SELECT count(*) FROM claude.sessions" in result.output
+
+
+def test_ask_cli_refuses_undeclared_time_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The regression this PR fixes: "last month" must not silently match the
+    all-time template and return unfiltered numbers."""
+
+    def _fetch_all(conn: Any, sql: str, *a: Any, **k: Any) -> list[dict[str, Any]]:
+        if "DISTINCT dir_name" in sql or "DISTINCT model" in sql:
+            return []
+        return [
+            {
+                "example_id": 1,
+                "question": "how many tokens were spent per model",
+                "sql_text": "SELECT model, sum(output_tokens) FROM claude.api_calls GROUP BY model",
+                "description": None,
+                "tags": [],
+                "slots": [],
+            }
+        ]
+
+    monkeypatch.setattr(cli_mod, "connect", _fake_connect)
+    monkeypatch.setattr(
+        cli_mod,
+        "get_settings",
+        lambda: type("S", (), {"database_url": "postgresql://fake"})(),
+    )
+    monkeypatch.setattr(cli_mod, "fetch_all", _fetch_all)
+    backend = _FakeBackend(
+        {
+            "how many tokens were spent per model": [1.0, 0.0],
+            # "last month" is stripped by extract_slots before the retriever
+            # ever sees the question -- this is the cleaned residual text.
+            "tokens per model": [1.0, 0.0],
+        }
+    )
+    monkeypatch.setattr(nlp_mod, "LocalEmbeddingBackend", lambda: backend)
+
+    result = runner.invoke(cli_mod.app, ["ask", "tokens per model last month"])
+
+    assert result.exit_code == 1
+    assert "Refusing" in result.output
+    assert "since" in result.output
 
 
 def test_ask_cli_low_confidence_prints_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -543,8 +779,11 @@ def test_ask_cli_session_scoped_sizes_params_from_placeholders(
                     "sql_text": _SESSION_SQL,
                     "description": None,
                     "tags": ["session_scoped"],
+                    "slots": [{"name": "session_id", "type": "session_id"}],
                 }
             ]
+        if "DISTINCT dir_name" in sql or "DISTINCT model" in sql:
+            return []
         calls.append((sql, params))
         return []
 
@@ -575,8 +814,11 @@ def test_ask_cli_db_error_caught_and_exits_nonzero(monkeypatch: pytest.MonkeyPat
                     "sql_text": _SESSION_SQL,
                     "description": None,
                     "tags": ["session_scoped"],
+                    "slots": [{"name": "session_id", "type": "session_id"}],
                 }
             ]
+        if "DISTINCT dir_name" in sql or "DISTINCT model" in sql:
+            return []
         raise psycopg.errors.InvalidTextRepresentation("invalid input syntax for type uuid")
 
     _patch_session_scoped(monkeypatch, _fetch_all)
