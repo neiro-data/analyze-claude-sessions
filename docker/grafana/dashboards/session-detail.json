@@ -5,14 +5,20 @@
   "version": 5,
   "editable": false,
   "timezone": "utc",
-  "time": { "from": "now-30d", "to": "now" },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
   "templating": {
     "list": [
       {
         "name": "session_id",
         "type": "query",
-        "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-        "query": "SELECT session_id::text AS __value, coalesce(nullif(ai_title, ''), session_id::text) AS __text FROM claude.v_session_token_summary ORDER BY first_event_at DESC",
+        "datasource": {
+          "type": "postgres",
+          "uid": "claude-analytics-pg"
+        },
+        "query": "SELECT session_id::text AS __value, session_id::text AS __text FROM claude.v_session_token_summary ORDER BY first_event_at DESC",
         "refresh": 1,
         "sort": 0,
         "includeAll": false,
@@ -22,14 +28,20 @@
         "name": "model",
         "label": "Model",
         "type": "query",
-        "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+        "datasource": {
+          "type": "postgres",
+          "uid": "claude-analytics-pg"
+        },
         "query": "SELECT DISTINCT model AS __text, model AS __value FROM claude.api_calls WHERE session_id = ${session_id:sqlstring} AND model IS NOT NULL ORDER BY model",
         "refresh": 1,
         "sort": 1,
         "multi": true,
         "includeAll": true,
         "allValue": "",
-        "current": { "text": "All", "value": "$__all" }
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -39,16 +51,38 @@
       "title": "",
       "type": "stat",
       "transparent": true,
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "options": {
         "textMode": "value",
         "colorMode": "none",
         "graphMode": "none",
         "justifyMode": "center",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "session_title", "values": false }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "session_title",
+          "values": false
+        }
       },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "text" } }, "overrides": [] },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
@@ -61,24 +95,52 @@
       "id": 1,
       "title": "Total tokens",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 3 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 3
+      },
       "options": {
         "colorMode": "value",
         "graphMode": "none",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
       },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1000000 },
-              { "color": "orange", "value": 5000000 },
-              { "color": "red", "value": 10000000 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1000000
+              },
+              {
+                "color": "orange",
+                "value": 5000000
+              },
+              {
+                "color": "red",
+                "value": 10000000
+              }
             ]
           }
         },
@@ -96,18 +158,37 @@
       "id": 2,
       "title": "Cache-read %",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 3 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 3
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 60 },
-              { "color": "green", "value": 90 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 60
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
             ]
           }
         },
@@ -125,16 +206,36 @@
       "id": 3,
       "title": "Duration (s)",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 3 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 3
+      },
       "options": {
         "colorMode": "none",
         "graphMode": "none",
         "textMode": "value",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
       },
       "fieldConfig": {
-        "defaults": { "color": { "mode": "fixed", "fixedColor": "text" }, "unit": "s" },
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "unit": "s"
+        },
         "overrides": []
       },
       "targets": [
@@ -149,16 +250,35 @@
       "id": 4,
       "title": "Model(s)",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 3 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 3
+      },
       "options": {
         "colorMode": "none",
         "graphMode": "none",
         "textMode": "value",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "models", "values": false }
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "models",
+          "values": false
+        }
       },
       "fieldConfig": {
-        "defaults": { "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
@@ -173,8 +293,16 @@
       "id": 5,
       "title": "Subagents / transcripts",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 3 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 3
+      },
       "targets": [
         {
           "refId": "A",
@@ -187,9 +315,22 @@
       "id": 11,
       "title": "Avg interval between calls (s)",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 3 },
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 3
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
@@ -200,43 +341,90 @@
     },
     {
       "id": 6,
-      "title": "Call timeline (tokens per call)",
+      "title": "Call timeline (tokens per call, by iteration)",
       "type": "barchart",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 7 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
       "transformations": [
         {
           "id": "groupingToMatrix",
-          "options": { "columnField": "model", "rowField": "call_index", "valueField": "tokens", "emptyValue": "zero" }
+          "options": {
+            "columnField": "model",
+            "rowField": "call_index",
+            "valueField": "tokens",
+            "emptyValue": "zero"
+          }
         },
         {
           "id": "organize",
-          "options": { "renameByName": { "call_index\\model": "call_index" }, "excludeByName": {}, "indexByName": {} }
+          "options": {
+            "renameByName": {
+              "call_index\\model": "call_index"
+            },
+            "excludeByName": {},
+            "indexByName": {}
+          }
         },
         {
           "id": "convertFieldType",
-          "options": { "conversions": [{ "targetField": "call_index", "destinationType": "number" }], "fields": {} }
+          "options": {
+            "conversions": [
+              {
+                "targetField": "call_index",
+                "destinationType": "number"
+              }
+            ],
+            "fields": {}
+          }
         }
       ],
       "options": {
         "xField": "call_index",
         "xTickLabelRotation": 0,
         "xTickLabelSpacing": 0,
-        "xTickLabelMaxLength": 0,
         "showValue": "never",
         "stacking": "normal",
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
       },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "custom": { "axisLabel": "tokens", "axisWidth": 60 },
-          "color": { "mode": "palette-classic" }
+          "custom": {
+            "axisLabel": "tokens",
+            "axisWidth": 60
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "call_index" },
-            "properties": [{ "id": "custom.axisLabel", "value": "iteration" }]
+            "matcher": {
+              "id": "byName",
+              "options": "call_index"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "iteration"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
           }
         ]
       },
@@ -250,34 +438,68 @@
     },
     {
       "id": 7,
-      "title": "Cache-read % by call",
+      "title": "Cache-read % by call (iteration)",
       "type": "barchart",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 16 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
       "options": {
         "xField": "call_index",
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 100,
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
         "showValue": "never"
       },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
-          "custom": { "axisLabel": "cache-read %", "axisWidth": 60 },
-          "color": { "mode": "thresholds" },
+          "custom": {
+            "axisLabel": "cache-read %",
+            "axisWidth": 60
+          },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 60 },
-              { "color": "green", "value": 90 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 60
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
             ]
           }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "call_index" },
-            "properties": [{ "id": "custom.axisLabel", "value": "iteration" }]
+            "matcher": {
+              "id": "byName",
+              "options": "call_index"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "iteration"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
           }
         ]
       },
@@ -291,36 +513,81 @@
     },
     {
       "id": 13,
-      "title": "Context growth by call",
+      "title": "Context growth by call (iteration)",
       "type": "barchart",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 25 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
       "options": {
         "xField": "call_index",
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 100,
-        "showValue": "never"
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "showValue": "never",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
       },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "custom": { "axisLabel": "context growth (tokens)", "axisWidth": 60 },
-          "color": { "mode": "thresholds" },
+          "custom": {
+            "axisLabel": "context growth (tokens)",
+            "axisWidth": 70
+          },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "blue", "value": null },
-              { "color": "green", "value": 0 },
-              { "color": "yellow", "value": 500 },
-              { "color": "orange", "value": 2000 },
-              { "color": "red", "value": 10000 }
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 500
+              },
+              {
+                "color": "orange",
+                "value": 2000
+              },
+              {
+                "color": "red",
+                "value": 10000
+              }
             ]
           }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "call_index" },
-            "properties": [{ "id": "custom.axisLabel", "value": "iteration" }]
+            "matcher": {
+              "id": "byName",
+              "options": "call_index"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "iteration"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
           }
         ]
       },
@@ -334,36 +601,76 @@
     },
     {
       "id": 12,
-      "title": "Time between calls (s)",
+      "title": "Time between calls (s, by iteration)",
       "type": "barchart",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 34 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
       "options": {
         "xField": "call_index",
-        "xTickLabelRotation": -45,
-        "xTickLabelSpacing": 100,
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
         "showValue": "never"
       },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "custom": { "axisLabel": "seconds since previous call", "axisWidth": 60 },
-          "color": { "mode": "thresholds" },
+          "custom": {
+            "axisLabel": "seconds since previous call",
+            "axisWidth": 60
+          },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 10 },
-              { "color": "orange", "value": 30 },
-              { "color": "red", "value": 300 },
-              { "color": "dark-blue", "value": 3600 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "orange",
+                "value": 30
+              },
+              {
+                "color": "red",
+                "value": 300
+              },
+              {
+                "color": "dark-blue",
+                "value": 3600
+              }
             ]
           }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "call_index" },
-            "properties": [{ "id": "custom.axisLabel", "value": "iteration" }]
+            "matcher": {
+              "id": "byName",
+              "options": "call_index"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "iteration"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
           }
         ]
       },
@@ -379,8 +686,16 @@
       "id": 8,
       "title": "Long gaps",
       "type": "table",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 43 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 43
+      },
       "targets": [
         {
           "refId": "A",
@@ -393,8 +708,16 @@
       "id": 9,
       "title": "Agent / subagent breakdown",
       "type": "table",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 43 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 43
+      },
       "targets": [
         {
           "refId": "A",
@@ -407,8 +730,16 @@
       "id": 10,
       "title": "Model mix",
       "type": "table",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 51 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 51
+      },
       "targets": [
         {
           "refId": "A",
