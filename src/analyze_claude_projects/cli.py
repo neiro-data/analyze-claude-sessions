@@ -131,7 +131,7 @@ def ingest(
             csv_dir=str(settings.csv_dir),
         )
         def _print(msg: str) -> None:
-            if not verbose and "(no API calls)" in msg:
+            if not verbose and ("(no API calls)" in msg or "(unchanged)" in msg):
                 return
             console.print(msg)
 
