@@ -2,7 +2,7 @@
   "uid": "acp-overview",
   "title": "Claude Usage Overview",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "editable": false,
   "timezone": "utc",
   "time": { "from": "now-30d", "to": "now" },
@@ -223,14 +223,32 @@
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 26 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "stacking": { "mode": "none", "group": "A" }
+          }
+        },
         "overrides": [
           {
             "matcher": { "id": "byName", "options": "cache_read_pct" },
             "properties": [
               { "id": "unit", "value": "percent" },
-              { "id": "custom.axisLabel", "value": "cache-read %" }
+              { "id": "max", "value": 100 },
+              { "id": "min", "value": 0 },
+              { "id": "custom.axisPlacement", "value": "left" },
+              { "id": "custom.axisLabel", "value": "cache-read %" },
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.lineWidth", "value": 2 },
+              { "id": "custom.fillOpacity", "value": 0 },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
             ]
           },
           {
@@ -238,7 +256,25 @@
             "properties": [
               { "id": "unit", "value": "short" },
               { "id": "custom.axisPlacement", "value": "right" },
-              { "id": "custom.axisLabel", "value": "cache-write tokens" }
+              { "id": "custom.axisLabel", "value": "tokens" },
+              { "id": "custom.drawStyle", "value": "bars" },
+              { "id": "custom.fillOpacity", "value": 80 },
+              { "id": "custom.lineWidth", "value": 0 },
+              { "id": "custom.stacking", "value": { "mode": "normal", "group": "tokens" } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "cache_read_tokens" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "custom.axisLabel", "value": "tokens" },
+              { "id": "custom.drawStyle", "value": "bars" },
+              { "id": "custom.fillOpacity", "value": 80 },
+              { "id": "custom.lineWidth", "value": 0 },
+              { "id": "custom.stacking", "value": { "mode": "normal", "group": "tokens" } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }
             ]
           }
         ]
@@ -247,7 +283,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT gs AS time, round(coalesce(sum(c.cache_read_tokens),0)::numeric / NULLIF(sum(c.total_input_tokens),0) * 100, 2) AS cache_read_pct, coalesce(sum(c.cache_write_tokens),0) AS cache_write_tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs ORDER BY gs"
+          "rawSql": "SELECT gs AS time, round(coalesce(sum(c.cache_read_tokens),0)::numeric / NULLIF(sum(c.total_input_tokens),0) * 100, 2) AS cache_read_pct, coalesce(sum(c.cache_write_tokens),0) AS cache_write_tokens, coalesce(sum(c.cache_read_tokens),0) AS cache_read_tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs ORDER BY gs"
         }
       ]
     },
