@@ -10,7 +10,8 @@ export CLAUDE_PROJECTS_DIR ?= $(HOME)/.claude/projects
 .PHONY: help env build build-db up down destroy logs ps psql \
         init-db discover ingest export-parquet stats shell \
         up-grafana dashboard \
-        venv lint fmt typecheck test check rag-stress
+        venv lint fmt typecheck test check rag-stress \
+        install-timer uninstall-timer
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -94,3 +95,10 @@ check: lint typecheck test ## Everything CI would run
 
 rag-stress: ## Run the real-model RAG stress battery, write a timestamped report to data/reports/
 	uv run --group nlp python scripts/rag_stress.py
+
+# --- scheduling (darwin) -----------------------------------------------------
+install-timer: ## Schedule bin/ingest.sh via launchd, every 30min (darwin only, explicit opt-in)
+	bin/launchd/install.sh
+
+uninstall-timer: ## Remove the launchd schedule installed by install-timer
+	bin/launchd/uninstall.sh

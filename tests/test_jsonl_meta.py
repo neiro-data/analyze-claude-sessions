@@ -1,12 +1,41 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import BinaryIO
+from unittest import mock
 
-from analyze_claude_projects.jsonl_meta import extract_metadata, parse_timestamp
+from analyze_claude_projects.jsonl_meta import (
+    SessionMetadata,
+    TranscriptCheckpoint,
+    extract_metadata,
+    parse_timestamp,
+)
 
 from .conftest import SESSION_ID
+
+
+def _checkpoint_from(meta: SessionMetadata) -> TranscriptCheckpoint:
+    """Build the checkpoint the loader would have persisted from a prior read."""
+    return TranscriptCheckpoint(
+        prefix_bytes=meta.jsonl_prefix_bytes,
+        prefix_sha256=meta.jsonl_sha256,
+        record_count=meta.record_count,
+        malformed_lines=meta.malformed_lines,
+        first_event_at=meta.first_event_at,
+        last_event_at=meta.last_event_at,
+        cwd=meta.cwd,
+        git_branches=list(meta.git_branches),
+        cli_versions=list(meta.cli_versions),
+        models=list(meta.models),
+        is_sidechain=meta.is_sidechain,
+        user_message_count=meta.user_message_count,
+        assistant_msg_count=meta.assistant_msg_count,
+        api_call_count=meta.api_call_count,
+        record_types=meta.record_types,
+    )
 
 
 def test_extracts_session_shape(transcript: Path) -> None:
@@ -119,6 +148,110 @@ def test_origin_session_id_absent_by_default(transcript: Path) -> None:
     meta = extract_metadata(transcript)
 
     assert meta.origin_session_id is None
+
+
+class _SeekTrackingFile:
+    """Wraps a real binary file object, recording every ``seek()`` offset."""
+
+    def __init__(self, handle: BinaryIO, offsets: list[int]) -> None:
+        self._handle = handle
+        self._offsets = offsets
+
+    def __enter__(self) -> _SeekTrackingFile:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._handle.close()
+
+    def __iter__(self) -> Iterator[bytes]:
+        return iter(self._handle)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._handle, name)
+
+    def seek(self, offset: int, *a: int) -> int:
+        self._offsets.append(offset)
+        return self._handle.seek(offset, *a)
+
+
+def _seek_offsets_during(fn: Callable[[], object]) -> list[int]:
+    """Record every byte offset `Path.open(...).seek()` is called with during *fn*."""
+    offsets: list[int] = []
+    real_open = Path.open
+
+    def _patched_open(self: Path, mode: str = "r", **kwargs: object) -> _SeekTrackingFile:
+        handle = real_open(self, mode, **kwargs)  # type: ignore[call-overload]
+        return _SeekTrackingFile(handle, offsets)
+
+    with mock.patch.object(Path, "open", _patched_open):
+        fn()
+    return offsets
+
+
+def test_checkpoint_prefix_covers_whole_file(transcript: Path) -> None:
+    meta = extract_metadata(transcript)
+
+    assert meta.jsonl_prefix_bytes == transcript.stat().st_size
+    assert meta.jsonl_prefix_lines == meta.record_count + meta.malformed_lines
+
+
+def test_appended_lines_are_parsed_from_the_tail_only(transcript: Path) -> None:
+    """A grown file whose prefix still matches should only stream the tail."""
+    first = extract_metadata(transcript)
+    checkpoint = _checkpoint_from(first)
+
+    with transcript.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "uuid": "11111111-2222-4333-8444-555566667777",
+                    "timestamp": "2026-08-08T11:51:10.000Z",
+                    "sessionId": str(SESSION_ID),
+                    "requestId": "req_3",
+                    "message": {
+                        "role": "assistant",
+                        "model": "claude-opus-5",
+                        "usage": {"input_tokens": 1, "output_tokens": 1},
+                    },
+                }
+            )
+            + "\n"
+        )
+
+    # A patched `Path.read_text`/whole-file read would still succeed with the
+    # tail logic (it uses `open(...).seek()` internally, not a full read), so
+    # correctness is asserted via content instead of instrumenting the seek --
+    # CPython's `_io.BufferedReader` is immutable and cannot be monkeypatched.
+    tail = extract_metadata(transcript, checkpoint=checkpoint)
+
+    seek_offsets = _seek_offsets_during(lambda: extract_metadata(transcript, checkpoint=checkpoint))
+    assert seek_offsets == [checkpoint.prefix_bytes]
+
+    assert tail.record_count == first.record_count + 1
+    assert tail.api_call_count == first.api_call_count + 1
+    assert tail.last_event_at == datetime(2026, 8, 8, 11, 51, 10, tzinfo=UTC)
+    assert tail.first_event_at == first.first_event_at
+    assert tail.jsonl_prefix_bytes == transcript.stat().st_size
+
+    full_reread = extract_metadata(transcript)
+    assert tail.record_count == full_reread.record_count
+    assert tail.api_call_count == full_reread.api_call_count
+    assert tail.jsonl_sha256 == full_reread.jsonl_sha256
+    assert dict(tail.record_types) == dict(full_reread.record_types)
+
+
+def test_truncated_file_falls_back_to_a_full_reread(transcript: Path) -> None:
+    """A prefix mismatch (rewrite/truncation) must not resume from the old offset."""
+    first = extract_metadata(transcript)
+    checkpoint = _checkpoint_from(first)
+
+    transcript.write_text('{"type": "user", "sessionId": "not-the-old-content"}\n')
+
+    meta = extract_metadata(transcript, checkpoint=checkpoint)
+
+    assert meta.record_count == 1
+    assert meta.jsonl_prefix_bytes == transcript.stat().st_size
 
 
 def test_parse_timestamp_handles_z_suffix_and_junk() -> None:

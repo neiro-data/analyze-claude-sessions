@@ -160,9 +160,9 @@ def upsert_transcript(
             session_id, agent_id, jsonl_path, jsonl_bytes, jsonl_mtime, jsonl_sha256,
             record_count, malformed_lines, first_event_at, last_event_at, cwd,
             git_branches, cli_versions, models, is_sidechain, user_message_count,
-            assistant_msg_count, api_call_count
+            assistant_msg_count, api_call_count, jsonl_prefix_bytes, jsonl_prefix_lines
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (session_id, agent_id) DO UPDATE SET
             jsonl_path          = EXCLUDED.jsonl_path,
             jsonl_bytes         = EXCLUDED.jsonl_bytes,
@@ -180,6 +180,8 @@ def upsert_transcript(
             user_message_count  = EXCLUDED.user_message_count,
             assistant_msg_count = EXCLUDED.assistant_msg_count,
             api_call_count      = EXCLUDED.api_call_count,
+            jsonl_prefix_bytes  = EXCLUDED.jsonl_prefix_bytes,
+            jsonl_prefix_lines  = EXCLUDED.jsonl_prefix_lines,
             updated_at          = now()
         RETURNING transcript_id
         """,
@@ -202,6 +204,8 @@ def upsert_transcript(
             meta.user_message_count,
             meta.assistant_msg_count,
             meta.api_call_count,
+            meta.jsonl_prefix_bytes,
+            meta.jsonl_prefix_lines,
         ),
     ).fetchone()
     if row is None:  # pragma: no cover
