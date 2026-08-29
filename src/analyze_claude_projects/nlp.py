@@ -29,7 +29,7 @@ SESSION_SCOPED_TAG = "session_scoped"
 # Session ids are word characters and hyphens (e.g. a UUID). Restricting the
 # capture to that set stops trailing sentence punctuation (`,` `.` `?`) from
 # being swallowed into the id, which would otherwise fail the uuid cast.
-_SESSION_ID_RE = re.compile(r"session_id\s*=\s*([\w-]+)", re.IGNORECASE)
+_SESSION_ID_RE = re.compile(r"session_id\s*=([\w-]+)", re.IGNORECASE)
 
 #: A bare pasted UUID, with no `session_id=` prefix required.
 _BARE_UUID_RE = re.compile(
@@ -269,9 +269,11 @@ def extract_slots(
     a bare UUID or `session_id=<id>` -> `session_id`; an explicit
     `since YYYY-MM[-DD]` -> `since` (a `date`); `last N days` -> `since`
     (`today - N days`); `last month` -> `since` (the 1st of the previous
-    calendar month, see `_last_calendar_month`); a whole-token match against
-    *known_projects* -> `project`; a whole-token match against *known_models*
-    -> `model`; `top N` -> `limit` (an int).
+    calendar month, see `_last_calendar_month`); `top N` -> `limit` (an int,
+    extracted before the known-value passes below so a project/model
+    literally named "top" can't swallow the token first); a whole-token
+    match against *known_projects* -> `project`; a whole-token match against
+    *known_models* -> `model`.
 
     Returns `(slots, cleaned_question)`. `slots` maps slot type name (one of
     `SLOT_TYPES`) to its extracted value; a type absent from the question is
@@ -300,8 +302,17 @@ def extract_slots(
         parts = [int(p) for p in raw.split("-")]
         year, month = parts[0], parts[1]
         day = parts[2] if len(parts) > 2 else 1
-        slots["since"] = date(year, month, day)
-        remaining = _remove_span(remaining, since_match.start(), since_match.end())
+        try:
+            since_date: date | None = date(year, month, day)
+        except ValueError:
+            # Shape matched (\d{4}-\d{2}[-\d{2}]) but isn't a real calendar
+            # date (e.g. 2026-13-45, 2026-02-30). Treat as no `since` slot so
+            # the question refuses through the normal unbindable-filter path
+            # instead of crashing the CLI with a bare ValueError.
+            since_date = None
+        if since_date is not None:
+            slots["since"] = since_date
+            remaining = _remove_span(remaining, since_match.start(), since_match.end())
     else:
         last_n_match = _LAST_N_DAYS_RE.search(remaining)
         if last_n_match:
@@ -316,6 +327,11 @@ def extract_slots(
                     remaining, last_month_match.start(), last_month_match.end()
                 )
 
+    top_n_match = _TOP_N_RE.search(remaining)
+    if top_n_match:
+        slots["limit"] = int(top_n_match.group(1))
+        remaining = _remove_span(remaining, top_n_match.start(), top_n_match.end())
+
     project_match = _match_known_value(remaining, known_projects)
     if project_match:
         value, start, end = project_match
@@ -327,11 +343,6 @@ def extract_slots(
         value, start, end = model_match
         slots["model"] = value
         remaining = _remove_span(remaining, start, end)
-
-    top_n_match = _TOP_N_RE.search(remaining)
-    if top_n_match:
-        slots["limit"] = int(top_n_match.group(1))
-        remaining = _remove_span(remaining, top_n_match.start(), top_n_match.end())
 
     cleaned = re.sub(r"\s+", " ", remaining).strip()
     return slots, cleaned
@@ -351,7 +362,16 @@ def _match_known_value(text: str, known_values: list[str]) -> tuple[str, int, in
     for value in sorted(known_values, key=len, reverse=True):
         if not value:
             continue
-        pattern = re.compile(rf"\b{re.escape(value)}\b", re.IGNORECASE)
+        # \b only fires between a word char and a non-word char, so it can
+        # never match next to a value whose own edge char is already
+        # non-word (e.g. "c++", "(beta)") -- the whole pattern would then
+        # silently fail to match at all. Only assert \b on edges where the
+        # value's own char is a word char; a non-word edge char already
+        # can't blend into a surrounding word, so no assertion is needed
+        # there.
+        left = r"\b" if value[0].isalnum() or value[0] == "_" else ""
+        right = r"\b" if value[-1].isalnum() or value[-1] == "_" else ""
+        pattern = re.compile(rf"{left}{re.escape(value)}{right}", re.IGNORECASE)
         match = pattern.search(text)
         if match:
             return value, match.start(), match.end()

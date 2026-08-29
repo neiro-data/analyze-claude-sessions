@@ -106,11 +106,20 @@ def test_extract_session_id_extracts_and_cleans() -> None:
     assert cleaned == "cache report"
 
 
-def test_extract_session_id_handles_spaces_around_equals() -> None:
-    session_id, cleaned = extract_session_id("cache report session_id = abc-123")
+def test_extract_session_id_handles_space_before_equals() -> None:
+    session_id, cleaned = extract_session_id("cache report session_id =abc-123")
 
     assert session_id == "abc-123"
     assert cleaned == "cache report"
+
+
+def test_extract_session_id_space_after_equals_does_not_bind() -> None:
+    """`session_id= foo` must not bind "foo" -- a space after `=` means the
+    following token wasn't pasted as the value, so this is not a match."""
+    session_id, cleaned = extract_session_id("cache report session_id= foo")
+
+    assert session_id is None
+    assert cleaned == "cache report session_id= foo"
 
 
 def test_extract_session_id_case_insensitive() -> None:
@@ -237,6 +246,55 @@ def test_extract_slots_top_n_is_limit() -> None:
 
     assert slots["limit"] == 5
     assert "top 5" not in cleaned
+
+
+def test_extract_slots_invalid_month_since_date_is_ignored() -> None:
+    """An unparseable calendar date (bad month) must not crash -- no `since`
+    slot is extracted and the question is left to refuse normally."""
+    slots, cleaned = extract_slots("tokens since 2026-13-45")
+
+    assert "since" not in slots
+    assert cleaned == "tokens since 2026-13-45"
+
+
+def test_extract_slots_invalid_day_since_date_is_ignored() -> None:
+    slots, _cleaned = extract_slots("tokens since 2026-02-30")
+
+    assert "since" not in slots
+
+
+def test_extract_slots_valid_since_date_still_binds() -> None:
+    slots, cleaned = extract_slots("tokens since 2026-02-28")
+
+    assert slots["since"] == date(2026, 2, 28)
+    assert "since" not in cleaned
+
+
+def test_extract_slots_top_n_survives_project_named_top() -> None:
+    """A project literally named "top" must not swallow the `top N` limit
+    token before the limit pattern gets a chance to match."""
+    slots, cleaned = extract_slots("top 10 sessions", known_projects=["top"])
+
+    assert slots["limit"] == 10
+    assert "project" not in slots
+    assert "top 10" not in cleaned
+
+
+def test_extract_slots_known_value_matches_non_word_edge() -> None:
+    """A known project/model value like "c++" has a non-word edge char, so
+    the whole-token match must not require a \\b there."""
+    slots, cleaned = extract_slots("show me tokens for c++", known_projects=["c++"])
+
+    assert slots["project"] == "c++"
+    assert "c++" not in cleaned
+
+
+def test_extract_slots_known_value_no_substring_false_positive() -> None:
+    """ "c++" must not falsely match inside an unrelated token like "cc++"."""
+    slots, cleaned = extract_slots("tokens for cc++", known_projects=["c++"])
+
+    assert "project" not in slots
+    assert cleaned == "tokens for cc++"
 
 
 def test_extract_slots_no_filters_present() -> None:

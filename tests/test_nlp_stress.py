@@ -138,21 +138,22 @@ def test_extract_slots_today_injection_is_deterministic() -> None:
 # --------------------------------------------------------------------------
 
 
-def test_extract_slots_invalid_month_raises() -> None:
-    # DOCUMENTED DEFECT (nlp.py:319, high): `since 2026-13-45` builds
-    # date(2026, 13, 45) with no validation, so `date()` raises ValueError
-    # instead of extract_slots treating it as "no since slot found". Any
-    # caller (e.g. the CLI) that doesn't wrap extract_slots in a try/except
-    # will crash on this user input instead of failing gracefully.
-    with pytest.raises(ValueError, match="month must be in 1..12"):
-        extract_slots("since 2026-13-45")
+def test_extract_slots_invalid_month_is_no_since_slot() -> None:
+    # FIXED (nlp.py:319, high): `since 2026-13-45` used to build
+    # date(2026, 13, 45) with no validation and raise ValueError out of
+    # extract_slots. It's now treated as "no since slot found" so callers
+    # (e.g. the CLI) refuse through the normal path instead of crashing.
+    slots, cleaned = extract_slots("since 2026-13-45")
+    assert "since" not in slots
+    assert cleaned == "since 2026-13-45"
 
 
-def test_extract_slots_invalid_day_raises() -> None:
+def test_extract_slots_invalid_day_is_no_since_slot() -> None:
     # Same class of defect (nlp.py:319) for an out-of-range day in a
     # calendar-valid month.
-    with pytest.raises(ValueError, match="day is out of range for month"):
-        extract_slots("since 2026-02-30")
+    slots, cleaned = extract_slots("since 2026-02-30")
+    assert "since" not in slots
+    assert cleaned == "since 2026-02-30"
 
 
 def test_extract_slots_last_zero_days() -> None:
@@ -168,15 +169,14 @@ def test_extract_slots_last_huge_days_does_not_raise() -> None:
     assert "since" in slots  # underflows to a very old (but valid) date
 
 
-def test_extract_slots_top_n_shadowed_by_project_name_collision() -> None:
-    # DOCUMENTED DEFECT (nlp.py:335-350, medium): project matching runs
-    # before the `top N` pattern. If "top" is itself a known project name,
-    # "top 0" is parsed as project="top" with the "0" left dangling in the
-    # cleaned text, and the `limit` slot is never extracted at all.
+def test_extract_slots_top_n_survives_project_name_collision() -> None:
+    # FIXED (nlp.py:335-350, medium): `top N` is now extracted before project
+    # matching runs, so "top" being itself a known project name no longer
+    # shadows the `limit` slot.
     slots, cleaned = extract_slots("top 0", known_projects=["top"])
-    assert slots == {"project": "top"}
-    assert "limit" not in slots
-    assert cleaned == "0"
+    assert slots == {"limit": 0}
+    assert "project" not in slots
+    assert cleaned == ""
 
 
 def test_extract_slots_top_n_leading_zeros() -> None:
@@ -191,15 +191,14 @@ def test_extract_slots_multiple_session_ids_keeps_first_only() -> None:
     assert "session_id=def" in cleaned
 
 
-def test_extract_slots_empty_session_id_value_swallows_next_token() -> None:
-    # DOCUMENTED DEFECT (nlp.py:29, medium): `_SESSION_ID_RE` requires
-    # `[\w-]+` (one or more), so "session_id=" with nothing after it is not
-    # a match on its own -- but if whitespace precedes an unrelated word, the
-    # regex reaches past the whitespace and swallows that word as the
-    # session_id, silently misattributing unrelated text as an id.
+def test_extract_slots_empty_session_id_value_does_not_swallow_next_token() -> None:
+    # FIXED (nlp.py:29, medium): `_SESSION_ID_RE` used to allow whitespace
+    # after `=`, so "session_id=" with nothing pasted directly after it
+    # would reach past the whitespace and swallow the next unrelated word as
+    # the session_id. Whitespace after `=` now means no match.
     slots, cleaned = extract_slots("session_id= foo")
-    assert slots["session_id"] == "foo"
-    assert cleaned == ""
+    assert "session_id" not in slots
+    assert cleaned == "session_id= foo"
 
 
 def test_extract_slots_uuid_adjacent_to_punctuation() -> None:
@@ -210,17 +209,18 @@ def test_extract_slots_uuid_adjacent_to_punctuation() -> None:
 
 
 @pytest.mark.parametrize("project", ["c++", "(beta)"])
-def test_extract_slots_project_with_trailing_non_word_metachar_not_matched(
+def test_extract_slots_project_with_trailing_non_word_metachar_matches(
     project: str,
 ) -> None:
-    # DOCUMENTED DEFECT (nlp.py:370, medium): `_match_known_value` wraps the
-    # value in `\b...\b`. `\b` only fires at a transition between a word char
-    # and a non-word char. Values that both start and end on a non-word
-    # character (here "+" and ")") never get a trailing `\b`, so they are
-    # never matched at all, even when surrounded by spaces.
+    # FIXED (nlp.py:370, medium): `_match_known_value` used to wrap the
+    # value in `\b...\b` unconditionally. `\b` only fires at a transition
+    # between a word char and a non-word char, so values that both start and
+    # end on a non-word character (here "+" and ")") never got a trailing
+    # `\b` and were never matched at all. The edge assertion is now only
+    # applied where the value's own edge char is a word char.
     slots, cleaned = extract_slots(f"count for {project}", known_projects=[project])
-    assert "project" not in slots
-    assert cleaned == f"count for {project}"
+    assert slots["project"] == project
+    assert cleaned == "count for"
 
 
 @pytest.mark.parametrize("project", ["a.b", "x|y"])
