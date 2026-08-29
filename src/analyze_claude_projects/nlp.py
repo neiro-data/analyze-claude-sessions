@@ -7,8 +7,11 @@ model and ranking by cosine similarity against the user's question.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -19,6 +22,8 @@ from numpy.typing import NDArray
 from pglast import parse_sql
 from pglast.parser import ParseError
 from pglast.visitors import Visitor
+
+from analyze_claude_projects.config import get_settings
 
 #: Minimum cosine similarity for a top hit to be considered a confident match.
 CONFIDENCE_THRESHOLD = 0.5
@@ -113,6 +118,11 @@ class Backend(Protocol):
         """Return one embedding row per input text, shape (len(texts), dim)."""
         ...
 
+    @property
+    def model_name(self) -> str:
+        """Identifier for the underlying embedding model (used as a cache key input)."""
+        ...
+
 
 class LocalEmbeddingBackend:
     """Wraps a local sentence-transformers model. Lazily imports/loads the model."""
@@ -165,6 +175,10 @@ class LocalEmbeddingBackend:
         embeddings = model.encode(texts, convert_to_numpy=True)  # type: ignore[attr-defined]
         return np.asarray(embeddings, dtype=np.float32)
 
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
 
 @dataclass(frozen=True)
 class NlpExample:
@@ -187,15 +201,99 @@ def _cosine_similarity(
     return np.asarray(corpus_norm @ query_norm, dtype=np.float32)
 
 
+def _catalog_cache_key(model_name: str, examples: list[NlpExample]) -> str:
+    """Stable hash of the model name plus the catalog's (id, question) rows.
+
+    Sorted by `example_id` so row order in the source query doesn't affect the
+    key, and encoded deterministically so the same catalog always hashes the
+    same way across processes/machines.
+    """
+
+    def _length_prefixed(chunk: bytes) -> bytes:
+        return len(chunk).to_bytes(8, "big") + chunk
+
+    hasher = hashlib.sha256()
+    hasher.update(_length_prefixed(model_name.encode("utf-8")))
+    for example in sorted(examples, key=lambda e: e.example_id):
+        hasher.update(_length_prefixed(str(example.example_id).encode("utf-8")))
+        hasher.update(_length_prefixed(example.question.encode("utf-8")))
+    return hasher.hexdigest()
+
+
+def _load_cached_embeddings(cache_dir: Path, cache_key: str) -> NDArray[np.float32] | None:
+    """Return cached embeddings if a valid, matching cache entry exists, else None.
+
+    Any failure (missing files, corrupt JSON/npy, key mismatch, wrong shape)
+    is treated as a cache miss rather than raised.
+    """
+    sidecar_path = cache_dir / f"{cache_key}.json"
+    array_path = cache_dir / f"{cache_key}.npy"
+    try:
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        if not isinstance(sidecar, dict) or sidecar.get("cache_key") != cache_key:
+            return None
+        embeddings: NDArray[np.float32] = np.load(array_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if embeddings.dtype != np.float32 or embeddings.ndim != 2:
+        return None
+    return embeddings
+
+
+def _store_cached_embeddings(
+    cache_dir: Path, cache_key: str, embeddings: NDArray[np.float32]
+) -> None:
+    """Write embeddings + sidecar atomically. Best-effort: failures are swallowed."""
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        array_path = cache_dir / f"{cache_key}.npy"
+        sidecar_path = cache_dir / f"{cache_key}.json"
+        array_fd, array_tmp_name = tempfile.mkstemp(dir=cache_dir, suffix=".npy.tmp")
+        try:
+            with os.fdopen(array_fd, "wb") as tmp_file:
+                np.save(tmp_file, embeddings)
+            os.replace(array_tmp_name, array_path)
+        finally:
+            Path(array_tmp_name).unlink(missing_ok=True)
+
+        # Sidecar is written (atomically) only after the array lands, so a
+        # reader never sees a sidecar whose matching array is missing.
+        sidecar_fd, sidecar_tmp_name = tempfile.mkstemp(dir=cache_dir, suffix=".json.tmp")
+        try:
+            with os.fdopen(sidecar_fd, "w", encoding="utf-8") as tmp_file:
+                tmp_file.write(json.dumps({"cache_key": cache_key}))
+            os.replace(sidecar_tmp_name, sidecar_path)
+        finally:
+            Path(sidecar_tmp_name).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 class CatalogRetriever:
     """Ranks curated `NlpExample` rows against a free-text question."""
 
-    def __init__(self, examples: list[NlpExample], backend: Backend) -> None:
+    def __init__(
+        self,
+        examples: list[NlpExample],
+        backend: Backend,
+        *,
+        cache_dir: Path | None = None,
+    ) -> None:
         self._examples = examples
         self._backend = backend
         self._embeddings: NDArray[np.float32] | None = None
-        if examples:
-            self._embeddings = backend.encode([example.question for example in examples])
+        if not examples:
+            return
+
+        resolved_cache_dir = cache_dir or get_settings().nlp_embeddings_cache_dir
+        cache_key = _catalog_cache_key(backend.model_name, examples)
+        cached = _load_cached_embeddings(resolved_cache_dir, cache_key)
+        if cached is not None and cached.shape[0] == len(examples):
+            self._embeddings = cached
+            return
+
+        self._embeddings = backend.encode([example.question for example in examples])
+        _store_cached_embeddings(resolved_cache_dir, cache_key, self._embeddings)
 
     def search(self, question: str, top_k: int = 3) -> list[tuple[NlpExample, float]]:
         """Return up to *top_k* (example, score) pairs, best match first."""

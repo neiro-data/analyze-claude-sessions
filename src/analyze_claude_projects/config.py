@@ -35,6 +35,7 @@ class Settings:
     report_script: Path
     sql_dir: Path
     database_url: str
+    nlp_embeddings_cache_dir: Path
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -50,6 +51,7 @@ class Settings:
             report_script=_path_env("REPORT_SCRIPT", DEFAULT_REPORT_SCRIPT),
             sql_dir=_path_env("SQL_DIR", DEFAULT_SQL_DIR),
             database_url=os.getenv("DATABASE_URL") or _database_url_from_parts(),
+            nlp_embeddings_cache_dir=_path_env("NLP_EMBEDDINGS_CACHE_DIR", data_dir / "nlp_cache"),
         )
 
     def ensure_dirs(self) -> None:

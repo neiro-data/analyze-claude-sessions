@@ -77,6 +77,7 @@ def settings(tmp_path: Path) -> Settings:
         report_script=tmp_path / "unused.sh",
         sql_dir=tmp_path / "sql",
         database_url="postgresql://unused/unused",
+        nlp_embeddings_cache_dir=tmp_path / "nlp_cache",
     )
 
 
