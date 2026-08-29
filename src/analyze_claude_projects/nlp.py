@@ -16,6 +16,9 @@ from typing import Any, Protocol
 
 import numpy as np
 from numpy.typing import NDArray
+from pglast import parse_sql
+from pglast.parser import ParseError
+from pglast.visitors import Visitor
 
 #: Minimum cosine similarity for a top hit to be considered a confident match.
 CONFIDENCE_THRESHOLD = 0.5
