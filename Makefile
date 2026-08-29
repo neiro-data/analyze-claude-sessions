@@ -10,7 +10,7 @@ export CLAUDE_PROJECTS_DIR ?= $(HOME)/.claude/projects
 .PHONY: help env build build-db up down destroy logs ps psql \
         init-db discover ingest export-parquet stats shell \
         up-grafana dashboard \
-        venv lint fmt typecheck test check
+        venv lint fmt typecheck test check rag-stress
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -91,3 +91,6 @@ test: ## pytest
 	uv run pytest
 
 check: lint typecheck test ## Everything CI would run
+
+rag-stress: ## Run the real-model RAG stress battery, write a timestamped report to data/reports/
+	uv run --group nlp python scripts/rag_stress.py
