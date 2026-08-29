@@ -297,7 +297,9 @@ marked `slow`) and `scripts/rag_stress.py`. It measures perturbation robustness 
 casing, punctuation, filler, truncation, unicode noise, …) against the clean baseline,
 sweeps `CONFIDENCE_THRESHOLD` from 0.30–0.75 against the in-catalog/out-of-catalog corpora,
 checks retrieval latency at 100/1k/10k rows, and re-runs the `ensure_read_only` adversarial
-corpus and slot-extraction fuzzing for regressions. Run it with:
+corpus and slot-extraction fuzzing for regressions. `ensure_read_only` itself parses the
+SQL with `pglast` (real PostgreSQL grammar) rather than pattern-matching it, so quoting and
+escaping edge cases can't slip past it. Run it with:
 
 ```bash
 uv run --group nlp pytest -m slow tests/test_nlp_stress_slow.py -s
