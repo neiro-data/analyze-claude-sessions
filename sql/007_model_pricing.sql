@@ -54,7 +54,13 @@ COMMENT ON COLUMN claude.model_pricing.cache_read_usd_per_mtok IS
 -- picoUSD before aggregating) and reused so the summary views stay simple
 -- sums, not weighted-average approximations.
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE VIEW claude.v_api_call_cost AS
+-- DROP + CREATE (not OR REPLACE): cost_usd's numeric(12,6) cast was added after
+-- this view first shipped, and CREATE OR REPLACE VIEW can't change a column's
+-- type -- only its own default -- so a rerun of `make init-db` against an
+-- already-provisioned DB would fail here. CASCADE also drops the three summary
+-- views below, which this same file recreates immediately after.
+DROP VIEW IF EXISTS claude.v_api_call_cost CASCADE;
+CREATE VIEW claude.v_api_call_cost AS
 SELECT
     c.call_id,
     c.transcript_id,
@@ -71,7 +77,7 @@ SELECT
       + c.cache_write_tokens * mp.cache_write_usd_per_mtok / 1e6
       + c.cache_read_tokens  * mp.cache_read_usd_per_mtok  / 1e6
       + c.output_tokens      * mp.output_usd_per_mtok      / 1e6
-    END                                                      AS cost_usd
+    END::numeric(12, 6)                                     AS cost_usd
 FROM claude.api_calls c
 LEFT JOIN LATERAL (
     SELECT p.*
@@ -87,7 +93,10 @@ COMMENT ON VIEW claude.v_api_call_cost IS
     'effective_from <= the call date. cost_usd is NULL, never 0, when the model has '
     'no priced row as of that date.';
 
-CREATE OR REPLACE VIEW claude.v_transcript_token_summary AS
+-- DROP + CREATE: cost_usd's numeric(14,6) cast means OR REPLACE would fail
+-- to change the column's type on a rerun. See v_api_call_cost above.
+DROP VIEW IF EXISTS claude.v_transcript_token_summary CASCADE;
+CREATE VIEW claude.v_transcript_token_summary AS
 SELECT
     t.transcript_id,
     t.session_id,
@@ -105,7 +114,7 @@ SELECT
     round(
         sum(c.cache_read_tokens)::numeric
         / NULLIF(sum(c.total_input_tokens), 0) * 100, 2)    AS cache_read_pct,
-    sum(cc.cost_usd)                                        AS cost_usd
+    sum(cc.cost_usd)::numeric(14, 6)                        AS cost_usd
 FROM claude.transcripts t
 JOIN claude.sessions s USING (session_id)
 JOIN claude.projects p USING (project_id)
@@ -114,7 +123,10 @@ LEFT JOIN claude.v_api_call_cost cc ON cc.call_id = c.call_id
 GROUP BY t.transcript_id, t.session_id, t.kind, t.agent_id, p.dir_name,
          t.first_event_at, t.duration_seconds;
 
-CREATE OR REPLACE VIEW claude.v_session_token_summary AS
+-- DROP + CREATE: cost_usd's numeric(14,6) cast means OR REPLACE would fail
+-- to change the column's type on a rerun. See v_api_call_cost above.
+DROP VIEW IF EXISTS claude.v_session_token_summary CASCADE;
+CREATE VIEW claude.v_session_token_summary AS
 SELECT
     s.session_id,
     p.dir_name                                              AS project_dir,
@@ -139,7 +151,7 @@ SELECT
         / NULLIF(sum(c.total_input_tokens), 0) * 100, 2)    AS cache_read_pct,
     round(avg(c.delta_seconds)::numeric, 1)                 AS avg_gap_seconds,
     max(c.delta_seconds)                                    AS max_gap_seconds,
-    sum(cc.cost_usd)                                        AS cost_usd
+    sum(cc.cost_usd)::numeric(14, 6)                        AS cost_usd
 FROM claude.sessions s
 JOIN claude.projects p USING (project_id)
 LEFT JOIN claude.transcripts t USING (session_id)
@@ -149,7 +161,10 @@ GROUP BY s.session_id, p.dir_name, p.project_path, s.ai_title, s.models,
          s.transcript_count, s.subagent_count, s.first_event_at, s.last_event_at,
          s.duration_seconds;
 
-CREATE OR REPLACE VIEW claude.v_project_token_summary AS
+-- DROP + CREATE: cost_usd's numeric(14,6) cast means OR REPLACE would fail
+-- to change the column's type on a rerun. See v_api_call_cost above.
+DROP VIEW IF EXISTS claude.v_project_token_summary CASCADE;
+CREATE VIEW claude.v_project_token_summary AS
 SELECT
     p.project_id,
     p.dir_name                                              AS project_dir,
@@ -167,7 +182,7 @@ SELECT
         / NULLIF(sum(c.total_input_tokens), 0) * 100, 2)    AS cache_read_pct,
     min(s.first_event_at)                                   AS first_event_at,
     max(s.last_event_at)                                    AS last_event_at,
-    sum(cc.cost_usd)                                        AS cost_usd
+    sum(cc.cost_usd)::numeric(14, 6)                        AS cost_usd
 FROM claude.projects p
 LEFT JOIN claude.sessions s USING (project_id)
 LEFT JOIN claude.transcripts t USING (session_id)

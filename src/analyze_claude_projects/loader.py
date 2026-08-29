@@ -162,7 +162,7 @@ def upsert_transcript(
             git_branches, cli_versions, models, is_sidechain, user_message_count,
             assistant_msg_count, api_call_count, jsonl_prefix_bytes, jsonl_prefix_lines
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (session_id, agent_id) DO UPDATE SET
             jsonl_path          = EXCLUDED.jsonl_path,
             jsonl_bytes         = EXCLUDED.jsonl_bytes,
