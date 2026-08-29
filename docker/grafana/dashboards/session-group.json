@@ -476,7 +476,7 @@
       "options": {
         "xField": "family_call_index",
         "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0,
+        "xTickLabelSpacing": 100,
         "showValue": "never",
         "stacking": "normal",
         "legend": {
@@ -672,7 +672,7 @@
       "options": {
         "xField": "family_call_index",
         "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0,
+        "xTickLabelSpacing": 100,
         "showValue": "never",
         "stacking": "none",
         "legend": {
@@ -753,7 +753,7 @@
       "options": {
         "xField": "family_call_index",
         "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 0,
+        "xTickLabelSpacing": 100,
         "showValue": "never",
         "stacking": "none",
         "legend": {
