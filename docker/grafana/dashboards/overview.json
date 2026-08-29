@@ -297,7 +297,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT s.session_id, s.project_dir, s.ai_title, s.total_input_tokens, s.output_tokens, s.cache_read_pct, s.api_calls, s.duration_seconds FROM claude.v_session_token_summary s WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) ORDER BY s.first_event_at DESC"
+          "rawSql": "SELECT s.session_id, s.ai_title, s.total_input_tokens, s.output_tokens, s.cache_read_pct, s.api_calls, s.duration_seconds FROM claude.v_session_token_summary s WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) ORDER BY s.first_event_at DESC"
         }
       ],
       "fieldConfig": {
