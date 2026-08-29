@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template for the launchd job that runs `bin/ingest.sh` on a schedule.
+  Installed (with __REPO_ROOT__ / __DOCKER_BIN_DIR__ substituted) by
+  `make install-timer`; never installed automatically or silently.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.analyze-claude-projects.ingest</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO_ROOT__/bin/ingest.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO_ROOT__</string>
+
+    <!-- launchd jobs run with a minimal environment: no shell profile, no
+         inherited PATH. `docker` (and `make`, `bash`, `git`) must be
+         reachable explicitly. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__DOCKER_BIN_DIR__:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+
+    <!-- Every 30 minutes; StartInterval is in seconds and runs from the last
+         job start, not wall-clock-aligned like cron. -->
+    <key>StartInterval</key>
+    <integer>1800</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__REPO_ROOT__/data/logs/ingest.launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO_ROOT__/data/logs/ingest.launchd.err.log</string>
+</dict>
+</plist>

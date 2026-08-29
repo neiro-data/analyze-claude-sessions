@@ -130,6 +130,7 @@ def ingest(
             source_root=str(settings.projects_dir),
             csv_dir=str(settings.csv_dir),
         )
+
         def _print(msg: str) -> None:
             if not verbose and ("(no API calls)" in msg or "(unchanged)" in msg):
                 return
