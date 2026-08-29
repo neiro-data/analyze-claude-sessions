@@ -1,0 +1,78 @@
+# Expanded out-of-catalog / stress corpus for the *slow* RAG stress suite
+# (tests/test_nlp_stress_slow.py) and the reporting script. Not used by the
+# fast tests/test_nlp_stress.py, which is model-free and does not embed
+# anything. See tests/data/nlp_eval.yaml for the paraphrase/recall corpus
+# these complement.
+#
+# `out_of_catalog` here is deliberately harder than nlp_eval.yaml's: near
+# misses about data the schema does not have, degenerate strings, very long
+# input, non-English/emoji text, and SQL injected as a "question" (must never
+# be treated as executable SQL by anything downstream -- retrieval only ever
+# sees it as opaque text).
+
+out_of_catalog:
+  - question: "how many pull requests are there"
+    note: "near miss: schema has sessions/transcripts/api_calls, not PRs"
+  - question: "what is the average latency per user"
+    note: "near miss: no per-user latency dimension in the catalog"
+  - question: "which sessions failed to deploy"
+    note: "near miss: no deployment concept in the schema"
+  - question: ""
+    note: "empty string"
+  - question: "   "
+    note: "whitespace only"
+  - question: "😀😀😀🤖🔥💯"
+    note: "emoji only, no latin tokens"
+  - question: "¿cuántas sesiones hay en total?"
+    note: "non-English (Spanish)"
+  - question: "セッションの数を教えて"
+    note: "non-English (Japanese)"
+  - question: "SELECT * FROM claude.sessions; DROP TABLE claude.sessions;--"
+    note: "SQL injected as a question; must be treated as opaque text, never executed"
+  - question: "how many sessions are there'; DROP TABLE claude.sessions;--"
+    note: "SQL injection appended to an otherwise in-catalog question"
+  - question: >-
+      how many sessions are there how many sessions are there how many
+      sessions are there how many sessions are there how many sessions are
+      there how many sessions are there how many sessions are there how many
+      sessions are there how many sessions are there how many sessions are
+      there how many sessions are there how many sessions are there how many
+      sessions are there how many sessions are there how many sessions are
+      there how many sessions are there how many sessions are there how many
+      sessions are there how many sessions are there how many sessions are
+      there how many sessions are there how many sessions are there how many
+      sessions are there how many sessions are there how many sessions are
+      there how many sessions are there how many sessions are there how many
+      sessions are there how many sessions are there how many sessions are
+      there how many sessions are there how many sessions are there how many
+      sessions are there how many sessions are there how many sessions are
+      there how many sessions are there how many sessions are there how many
+      sessions are there how many sessions are there how many sessions are
+      there how many sessions are there how many sessions are there
+    note: "~2000-char question, heavy repetition"
+
+# Perturbation-class config the slow suite/report script can drive
+# tests/analyze_claude_projects.nlp_stress.PERTURBATIONS with, instead of
+# hard-coding rates in Python.
+perturbation_config:
+  seed: 20260829
+  rates:
+    typo_adjacent_swap: 0.1
+    typo_delete: 0.1
+    typo_duplicate: 0.1
+    whitespace_unicode_noise: 0.15
+  classes:
+    - typo_adjacent_swap
+    - typo_delete
+    - typo_duplicate
+    - casing_upper
+    - casing_lower
+    - casing_title
+    - punctuation_strip
+    - punctuation_add
+    - filler_prefix
+    - filler_suffix
+    - word_order_shuffle
+    - truncate_60_percent
+    - stopword_drop
+    - whitespace_unicode_noise

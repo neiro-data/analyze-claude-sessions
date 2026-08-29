@@ -16,6 +16,7 @@ build/
 data/csv/
 data/parquet/
 data/backups/
+data/reports/
 !data/csv/.gitkeep
 !data/parquet/.gitkeep
 

@@ -289,3 +289,22 @@ entry, plus out-of-catalog questions) and prints recall@1, recall@3, and a false
 rate. It's marked `slow` and excluded from `make check` / the default `pytest` run since it
 loads a real model; run it by hand when changing retrieval and compare against the last
 printed numbers.
+
+### RAG stress suite (opt-in)
+
+A heavier, real-model stress battery lives in `tests/test_nlp_stress_slow.py` (all tests
+marked `slow`) and `scripts/rag_stress.py`. It measures perturbation robustness (typos,
+casing, punctuation, filler, truncation, unicode noise, …) against the clean baseline,
+sweeps `CONFIDENCE_THRESHOLD` from 0.30–0.75 against the in-catalog/out-of-catalog corpora,
+checks retrieval latency at 100/1k/10k rows, and re-runs the `ensure_read_only` adversarial
+corpus and slot-extraction fuzzing for regressions. Run it with:
+
+```bash
+uv run --group nlp pytest -m slow tests/test_nlp_stress_slow.py -s
+uv run --group nlp python scripts/rag_stress.py            # full battery, writes data/reports/
+uv run --group nlp python scripts/rag_stress.py --quick    # small/fast sanity run
+```
+
+or `make rag-stress` for the full report. It's excluded from `make check` and the default
+`pytest` run — same reasons as the eval above — and its reports (`data/reports/`) are
+gitignored scratch output, not tracked artifacts.
