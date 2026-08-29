@@ -311,98 +311,83 @@ class SqlCase:
     sql: str
     expect_allow: bool
     note: str = ""
-    known_bypass: bool = False
-    """True when `expect_allow` pins a REAL security defect in `ensure_read_only`.
-
-    These cases are "expected" only in the regression-detection sense: the guard
-    wrongly allows them today. Reports must surface them separately so a zero
-    regression count is never mistaken for "no known bypasses exist".
-    """
 
 
 SQL_ADVERSARIAL_CORPUS: tuple[SqlCase, ...] = (
     SqlCase(
         "dollar_quote_semicolon",
         "SELECT $$ ; DROP TABLE t $$",
-        False,
-        "Dollar-quoted string is not recognised by _blank_string_literals; "
-        "the literal ';' and 'drop' stay visible, so this is (over-strictly) "
-        "rejected even though it is a single harmless SELECT.",
+        True,
+        "A real PostgreSQL parse understands dollar-quoting: the ';' and "
+        "'drop' inside the literal are just string content, so this is a "
+        "single, harmless SELECT.",
     ),
     SqlCase(
         "dollar_quote_tag_semicolon",
         "SELECT $tag$ ; DROP TABLE t $tag$",
-        False,
-        "Same over-strict rejection with a tagged dollar-quote.",
+        True,
+        "Same, with a tagged dollar-quote.",
     ),
     SqlCase(
         "dollar_quote_apostrophe_bypass",
         "SELECT $$it's$$ ; DROP TABLE t ; SELECT $$won't$$",
-        True,
-        "CRITICAL REAL BYPASS: two apostrophes inside unrelated dollar-quoted "
-        "strings are mis-paired by the single-quote blanking regex, which "
-        "blanks out the entire '; DROP TABLE t ; SELECT $$' span between them "
-        "-- hiding a genuine 3-statement injection. ensure_read_only currently "
-        "ALLOWS this.",
-        known_bypass=True,
+        False,
+        "FIXED (was a CRITICAL real bypass under the regex guard): the real "
+        "grammar parses this as three separate statements -- two harmless "
+        "SELECTs and a genuine DROP TABLE in between -- and ensure_read_only "
+        "now correctly rejects it as multi-statement.",
     ),
     SqlCase(
         "comment_split_into",
         "SELECT/**/INTO x FROM t",
         False,
-        "Comments are stripped before the leading-keyword check, so "
-        "'SELECT/**/INTO' collapses to 'SELECTINTO': not a recognised leading "
-        "keyword, rejected (for the 'wrong' reason -- not because of the "
-        "'into' denylist entry).",
+        "A real parse sees `SELECT INTO x FROM t`: a genuine SELECT INTO "
+        "write, rejected for the right reason (a non-empty intoClause).",
     ),
     SqlCase(
         "comment_split_delete",
         "DEL--\nETE FROM t",
         False,
-        "Line comment inside a keyword: first token becomes 'DEL', which is "
-        "not a leading keyword, so this is rejected (for the 'wrong' reason: "
-        "not-a-SELECT, not the DELETE denylist).",
+        "Not valid SQL under any comment interpretation; the parser raises "
+        "a syntax error and ensure_read_only rejects it.",
     ),
     SqlCase(
         "nested_block_comment",
         "SELECT * FROM t /* /* nested */ comment */",
         True,
-        "Non-standard SQL nested comments: Python's DOTALL regex is not "
-        "recursive, so `/*.*?*/` matches the *first* `*/` it finds, leaving "
-        "trailing ` comment */` as plain (harmless) text appended after the "
-        "statement. Allowed, and genuinely harmless here, but documents that "
-        "comment stripping is not comment-nesting aware.",
+        "PostgreSQL's grammar (unlike ANSI SQL) nests block comments, so the "
+        "whole `/* /* nested */ comment */` span is one comment and this is "
+        "a single, harmless SELECT.",
     ),
     SqlCase(
         "data_modifying_cte",
         "WITH x AS (INSERT INTO t VALUES(1) RETURNING *) SELECT * FROM x",
         False,
-        "Correctly rejected: 'insert' keyword denylist still fires inside a CTE.",
+        "Correctly rejected: the INSERT nested inside the CTE is found by "
+        "walking the full parse tree for any non-SELECT statement node.",
     ),
     SqlCase(
         "e_string_backslash_escape",
         "SELECT E'\\'; DROP TABLE t; --'",
-        False,
-        "FALSE POSITIVE: in a real E'' string a backslash-quote is an escape, "
-        "so this is one legitimate (if odd) single-statement SELECT. The "
-        "blanking regex does not know about E-string escapes, splits the "
-        "literal early, and rejects a safe query.",
+        True,
+        "FIXED (was a false positive under the regex guard): the real "
+        "grammar understands the E'' backslash-quote escape, so this parses "
+        "as one legitimate (if odd) single-statement SELECT.",
     ),
     SqlCase(
         "u_ampersand_string",
         "SELECT U&'\\0044ROP'",
         True,
-        "U&'' unicode-escape string is allowed (blanked like a normal literal); "
-        "no keyword surfaces from the escape sequence itself.",
+        "U&'' unicode-escape string is allowed; no keyword surfaces from the "
+        "escape sequence itself.",
     ),
     SqlCase(
         "keyword_as_column_alias",
         "SELECT id AS copy FROM t",
-        False,
-        "SUSPECTED FALSE POSITIVE: 'copy' is only a column alias here, not "
-        "the COPY statement, but the keyword denylist has no syntactic "
-        "position awareness and rejects any occurrence of the bare word. "
-        "ensure_read_only currently REJECTS this safe query.",
+        True,
+        "FIXED (was a false positive under the regex guard): the parse tree "
+        "has no COPY statement node here, only a column alias named 'copy', "
+        "so this is correctly allowed.",
     ),
     SqlCase(
         "pg_sleep_qualified",

@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "orjson>=3.10",
+    "pglast>=8.4",
     "polars>=1.17",
     "psycopg[binary]>=3.2",
     "python-dotenv>=1.0",

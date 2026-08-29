@@ -16,6 +16,9 @@ from typing import Any, Protocol
 
 import numpy as np
 from numpy.typing import NDArray
+from pglast import parse_sql
+from pglast.parser import ParseError
+from pglast.visitors import Visitor
 
 #: Minimum cosine similarity for a top hit to be considered a confident match.
 CONFIDENCE_THRESHOLD = 0.5
@@ -50,25 +53,6 @@ SLOT_TYPES = ("session_id", "since", "project", "model", "limit")
 
 #: Default local embedding model; small, CPU-friendly, good general recall.
 DEFAULT_MODEL_NAME = "all-MiniLM-L6-v2"
-
-_LEADING_KEYWORDS = ("select", "with")
-_FORBIDDEN_KEYWORDS = (
-    "insert",
-    "update",
-    "delete",
-    "drop",
-    "alter",
-    "truncate",
-    "grant",
-    "revoke",
-    "create",
-    "call",
-    "do",
-    "copy",
-    "vacuum",
-    "merge",
-    "into",  # blocks SELECT ... INTO <table> (a write)
-)
 
 #: Functions callable from a plain SELECT that have side effects or bypass
 #: READ ONLY semantics (file/network access, DoS, session control). READ ONLY
@@ -405,54 +389,97 @@ def filter_examples(examples: list[NlpExample], *, session_scoped: bool) -> list
     return [example for example in examples if SESSION_SCOPED_TAG not in example.tags]
 
 
+class _ReadOnlyInspector(Visitor):
+    """Walks a parsed SQL tree, collecting anything `ensure_read_only` forbids.
+
+    Any AST node whose class name ends in ``Stmt`` other than the outer
+    ``SelectStmt``/``RawStmt`` wrapper is a nested write (e.g. an `INSERT`
+    hidden inside a CTE), regardless of where in the tree it appears. A
+    `SelectStmt` with a non-empty `intoClause` is `SELECT ... INTO <table>`,
+    itself a write. Every `FuncCall` name is collected so callers can check
+    it against `_FORBIDDEN_FUNCTIONS`.
+    """
+
+    _ALLOWED_STMT_NODES = ("SelectStmt", "RawStmt")
+
+    def __init__(self) -> None:
+        self.forbidden_stmt_types: list[str] = []
+        self.has_select_into = False
+        self.func_names: list[str] = []
+
+    def visit(self, ancestors: object, node: object) -> None:
+        name = type(node).__name__
+        if name == "FuncCall":
+            self.func_names.append(
+                ".".join(part.sval for part in node.funcname)  # type: ignore[attr-defined]
+            )
+        elif name == "SelectStmt":
+            if node.intoClause is not None:  # type: ignore[attr-defined]
+                self.has_select_into = True
+        elif name.endswith("Stmt") and name not in self._ALLOWED_STMT_NODES:
+            self.forbidden_stmt_types.append(name)
+        return None
+
+
 def ensure_read_only(sql: str) -> None:
-    """Reject anything that is not a single, leading SELECT/WITH statement.
+    """Reject anything that is not a single, read-only SELECT/WITH statement.
+
+    Parses *sql* with the real PostgreSQL grammar (`pglast`, backed by
+    `libpg_query`) rather than pattern-matching the text, so dollar-quoted
+    strings, nested comments, and escape sequences the grammar itself
+    understands can never be mistaken for statement boundaries or keywords.
 
     Raises:
-        UnsafeQueryError: if the SQL contains multiple statements, DML/DDL
-            keywords, or does not start with SELECT/WITH.
+        UnsafeQueryError: if the SQL fails to parse, contains more than one
+            statement, is not a top-level SELECT (optionally `WITH`-prefixed),
+            writes via `SELECT ... INTO`, embeds a data-modifying statement
+            (e.g. an `INSERT` inside a CTE), or calls a forbidden function.
     """
-    stripped = _strip_comments(sql).strip()
-    if not stripped:
+    # `%s` is our own psycopg-style bind placeholder, not valid PostgreSQL
+    # grammar. Substitute a harmless literal before parsing so templated
+    # queries (e.g. `WHERE session_id = %s`) can still be structurally
+    # validated; `count_placeholders` (not this function) is what counts
+    # the real placeholders in the original, unmodified SQL.
+    parseable_sql = sql.replace("%s", "NULL")
+    try:
+        statements = parse_sql(parseable_sql)
+    except ParseError as exc:
+        raise UnsafeQueryError(f"SQL failed to parse: {exc}") from exc
+
+    if not statements:
         raise UnsafeQueryError("Empty SQL statement")
-
-    # Leading keyword is checked on the raw (stripped) text so a literal can't
-    # masquerade as the first word.
-    first_word_match = re.match(r"[A-Za-z]+", stripped)
-    first_word = first_word_match.group(0).lower() if first_word_match else ""
-    if first_word not in _LEADING_KEYWORDS:
-        raise UnsafeQueryError("Only SELECT / WITH statements are allowed")
-
-    # Structural checks (statement count, keyword/function denylists) run on a
-    # copy with string literals blanked out, so a value like 'a;b' or
-    # WHERE agent_type = 'call' is not mistaken for SQL syntax.
-    scannable = _blank_string_literals(stripped)
-    body = scannable[:-1] if scannable.rstrip().endswith(";") else scannable
-    if ";" in body:
+    if len(statements) > 1:
         raise UnsafeQueryError("Only a single SQL statement is allowed")
 
-    lowered = body.lower()
-    for keyword in _FORBIDDEN_KEYWORDS:
-        if re.search(rf"\b{re.escape(keyword)}\b", lowered):
-            raise UnsafeQueryError(f"Forbidden keyword in query: {keyword}")
-    for func in _FORBIDDEN_FUNCTIONS:
-        if re.search(rf"\b{re.escape(func)}\b", lowered):
-            raise UnsafeQueryError(f"Forbidden function in query: {func}")
+    top_statement = statements[0].stmt
+    if type(top_statement).__name__ != "SelectStmt":
+        raise UnsafeQueryError("Only SELECT / WITH statements are allowed")
 
+    inspector = _ReadOnlyInspector()
+    inspector(top_statement)
 
-def _strip_comments(sql: str) -> str:
-    """Remove `--` line comments and `/* */` block comments."""
-    without_block = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
-    without_line = re.sub(r"--[^\n]*", "", without_block)
-    return without_line
+    if inspector.has_select_into:
+        raise UnsafeQueryError("SELECT ... INTO is not allowed")
+    if inspector.forbidden_stmt_types:
+        raise UnsafeQueryError(
+            f"Forbidden statement type in query: {inspector.forbidden_stmt_types[0]}"
+        )
+    for func_name in inspector.func_names:
+        unqualified = func_name.rsplit(".", 1)[-1].lower()
+        if unqualified in _FORBIDDEN_FUNCTIONS:
+            raise UnsafeQueryError(f"Forbidden function in query: {func_name}")
 
 
 def _blank_string_literals(sql: str) -> str:
-    """Replace the contents of single-quoted string literals with a placeholder.
+    """Replace the contents of string literals with a placeholder.
 
-    Doubled quotes (`''`) are SQL's own escape for a literal quote, so they are
-    collapsed first. This keeps semicolons and keywords that appear *inside*
-    string values from being read as SQL syntax by the denylist scans.
+    Dollar-quoted strings (`$$...$$`, `$tag$...$tag$`) are blanked first, so
+    an apostrophe or semicolon living inside one can't be mis-paired with a
+    single quote elsewhere in the text. Doubled quotes (`''`) are SQL's own
+    escape for a literal quote inside a single-quoted string, so they are
+    collapsed next. This keeps content that appears *inside* string values
+    from being read as SQL syntax by `count_placeholders`.
     """
-    without_escaped = sql.replace("''", "")
+    without_dollar_quotes = re.sub(r"\$(\w*)\$.*?\$\1\$", "$$", sql, flags=re.DOTALL)
+    without_escaped = without_dollar_quotes.replace("''", "")
     return re.sub(r"'[^']*'", "''", without_escaped)

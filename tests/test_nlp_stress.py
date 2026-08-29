@@ -283,33 +283,29 @@ def test_ensure_read_only_adversarial_corpus(case) -> None:  # type: ignore[no-u
             ensure_read_only(case.sql)
 
 
-def test_ensure_read_only_dollar_quote_apostrophe_is_a_real_bypass() -> None:
-    # CRITICAL DOCUMENTED DEFECT (nlp.py:450-458). `_blank_string_literals`
-    # only understands single-quoted string literals. Two apostrophes that
-    # live inside unrelated `$$...$$` dollar-quoted strings are mis-paired by
-    # the `'[^']*'` regex, which blanks out *everything between them* --
-    # including a genuine `; DROP TABLE t ;` statement separator sitting
-    # outside any real string. ensure_read_only currently ALLOWS this
-    # 3-statement injection. This must be fixed in nlp.py, which is out of
-    # scope for this test file -- pinned here so a fix is verifiable later.
+def test_ensure_read_only_dollar_quote_apostrophe_bypass_is_fixed() -> None:
+    # Was a CRITICAL real bypass under the old regex guard (single-quote
+    # blanking mis-paired apostrophes living inside unrelated `$$...$$`
+    # dollar-quoted strings, hiding a genuine 3-statement injection). The
+    # real-grammar parser sees this as three statements and rejects it.
     sql = "SELECT $$it's$$ ; DROP TABLE t ; SELECT $$won't$$"
-    ensure_read_only(sql)  # current (unsafe) behaviour: does NOT raise
+    with pytest.raises(UnsafeQueryError, match="single SQL statement"):
+        ensure_read_only(sql)
 
 
-def test_ensure_read_only_keyword_alias_false_positive() -> None:
-    # DOCUMENTED DEFECT (nlp.py:435-437, low): the keyword denylist has no
-    # syntactic position awareness, so a harmless column alias named after a
-    # denylisted keyword is rejected as if it were the statement itself.
-    with pytest.raises(UnsafeQueryError, match="copy"):
-        ensure_read_only("SELECT id AS copy FROM t")
+def test_ensure_read_only_keyword_alias_is_allowed() -> None:
+    # Was a false positive under the old regex keyword denylist (no
+    # syntactic position awareness). The parse tree has no COPY statement
+    # node here, only a column alias, so this is correctly allowed.
+    ensure_read_only("SELECT id AS copy FROM t")
 
 
-def test_ensure_read_only_e_string_escape_false_positive() -> None:
-    # DOCUMENTED DEFECT (nlp.py:450-458, low): backslash-quote escapes inside
-    # a Postgres E'' string are not understood by the blanking regex, so a
-    # single legitimate statement is mis-split and rejected.
-    with pytest.raises(UnsafeQueryError):
-        ensure_read_only("SELECT E'\\'; DROP TABLE t; --'")
+def test_ensure_read_only_e_string_escape_is_allowed() -> None:
+    # Was a false positive under the old regex guard (backslash-quote
+    # escapes inside a Postgres E'' string were not understood by the
+    # blanking regex). The real grammar parses this as one legitimate
+    # single-statement SELECT.
+    ensure_read_only("SELECT E'\\'; DROP TABLE t; --'")
 
 
 # --------------------------------------------------------------------------
@@ -329,11 +325,12 @@ def test_count_placeholders_real_bind_marker() -> None:
     assert count_placeholders("SELECT * FROM t WHERE id = %s AND name = %s") == 2
 
 
-def test_count_placeholders_inside_dollar_quote_not_blanked() -> None:
-    # DOCUMENTED DEFECT (nlp.py:388-394, low): dollar-quoted content is not
-    # recognised as a string literal, so a literal "%s" inside `$$ %s $$` is
-    # miscounted as a real bind placeholder.
-    assert count_placeholders("SELECT $$ %s $$") == 1
+def test_count_placeholders_inside_dollar_quote_is_blanked() -> None:
+    # Was a defect: dollar-quoted content was not recognised as a string
+    # literal, so a literal "%s" inside `$$ %s $$` was miscounted as a real
+    # bind placeholder. `_blank_string_literals` now blanks dollar-quotes
+    # first, so it is correctly not counted.
+    assert count_placeholders("SELECT $$ %s $$") == 0
 
 
 # --------------------------------------------------------------------------
