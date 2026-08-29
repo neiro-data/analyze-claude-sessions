@@ -43,6 +43,31 @@ make init-db      # applies sql/*.sql (also runs automatically on a fresh volume
 (both covered by `bin/ingest.sh`). `make stats`, `make psql`, and `make export-parquet`
 are still available directly.
 
+### Scheduled ingest (macOS / launchd)
+
+`bin/ingest.sh` is safe to run unattended, but nothing schedules it by default --
+`make install-timer` is the explicit, one-time opt-in:
+
+```bash
+make install-timer     # installs + loads a launchd agent, runs bin/ingest.sh every 30 min
+make uninstall-timer   # unloads + removes it
+```
+
+This writes `~/Library/LaunchAgents/com.analyze-claude-projects.ingest.plist` from
+`bin/launchd/com.analyze-claude-projects.ingest.plist.template`, resolving the repo root and
+`docker`'s directory into an explicit `PATH` (launchd jobs start with a minimal environment, no
+shell profile). Logs go to `data/logs/ingest.launchd.{out,err}.log`; a completed run also shows
+up in `claude.ingest_runs` (`acp query "select * from claude.ingest_runs order by run_id desc
+limit 5"`). Requires Docker Desktop (or equivalent) to be running at the scheduled time --
+`bin/ingest.sh` starts the `postgres` container itself but not the Docker daemon.
+
+Check/trigger manually:
+
+```bash
+launchctl list | grep com.analyze-claude-projects.ingest
+launchctl start com.analyze-claude-projects.ingest   # run once, right now
+```
+
 ### Natural-language queries (`acp ask`)
 
 Run it from the project root with `uv`:
