@@ -65,7 +65,9 @@ def main(
 ) -> None:
     """Open `data/parquet/*.parquet` with DuckDB and run example aggregations."""
     if not parquet_dir.exists():
-        raise typer.BadParameter(f"{parquet_dir} does not exist -- run `make export-parquet` first.")
+        raise typer.BadParameter(
+            f"{parquet_dir} does not exist -- run `make export-parquet` first."
+        )
 
     con = duckdb.connect()
 

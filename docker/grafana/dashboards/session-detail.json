@@ -249,7 +249,7 @@
     {
       "id": 4,
       "title": "Model(s)",
-      "type": "table",
+      "type": "stat",
       "datasource": {
         "type": "postgres",
         "uid": "claude-analytics-pg"
@@ -261,20 +261,22 @@
         "y": 3
       },
       "options": {
-        "showHeader": false,
-        "cellHeight": "sm"
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "models",
+          "values": false
+        }
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "fixed",
             "fixedColor": "text"
-          },
-          "custom": {
-            "align": "left",
-            "cellOptions": {
-              "type": "auto"
-            }
           }
         },
         "overrides": []
@@ -283,7 +285,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT unnest(models) AS model FROM claude.v_session_token_summary WHERE session_id = ${session_id:sqlstring}"
+          "rawSql": "SELECT array_to_string(models, ', ') AS models FROM claude.v_session_token_summary WHERE session_id = ${session_id:sqlstring}"
         }
       ]
     },
@@ -387,7 +389,7 @@
       "options": {
         "xField": "call_index",
         "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 100,
+        "xTickLabelSpacing": 0,
         "showValue": "never",
         "stacking": "normal",
         "legend": {
@@ -451,7 +453,7 @@
       "options": {
         "xField": "call_index",
         "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 100,
+        "xTickLabelSpacing": 0,
         "showValue": "never"
       },
       "fieldConfig": {
@@ -526,7 +528,7 @@
       "options": {
         "xField": "call_index",
         "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 100,
+        "xTickLabelSpacing": 0,
         "showValue": "never",
         "legend": {
           "displayMode": "list",
@@ -614,7 +616,7 @@
       "options": {
         "xField": "call_index",
         "xTickLabelRotation": 0,
-        "xTickLabelSpacing": 100,
+        "xTickLabelSpacing": 0,
         "showValue": "never"
       },
       "fieldConfig": {

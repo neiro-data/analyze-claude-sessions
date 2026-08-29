@@ -43,6 +43,19 @@ make init-db      # applies sql/*.sql (also runs automatically on a fresh volume
 (both covered by `bin/ingest.sh`). `make stats`, `make psql`, and `make export-parquet`
 are still available directly.
 
+### Ad-hoc charts without the database (DuckDB over `data/parquet/`)
+
+With the stack **down**, `scripts/duckdb_parquet.py` opens the pg_parquet exports directly
+via DuckDB's `read_parquet` — no PostgreSQL, no containers:
+
+```bash
+uv run python scripts/duckdb_parquet.py                    # example aggregations
+uv run python scripts/duckdb_parquet.py --sql "SELECT model, count(*) FROM read_parquet('data/parquet/api_calls.parquet') GROUP BY model"
+```
+
+Requires `data/parquet/*.parquet` to already exist (`make export-parquet`, or any prior
+`make ingest` run — export happens automatically at the end of the pipeline).
+
 ### Natural-language queries (`acp ask`)
 
 Run it from the project root with `uv`:

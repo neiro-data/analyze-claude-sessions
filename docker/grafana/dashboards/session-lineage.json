@@ -12,16 +12,6 @@
   "templating": {
     "list": [
       {
-        "name": "session_id",
-        "label": "Session ID",
-        "type": "textbox",
-        "query": "",
-        "current": {
-          "text": "",
-          "value": ""
-        }
-      },
-      {
         "name": "role",
         "label": "Role",
         "type": "custom",
@@ -97,7 +87,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS child_sessions FROM claude.v_session_lineage l WHERE l.is_child AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${session_id}' = '' OR l.session_id = ${session_id:sqlstring})"
+          "rawSql": "SELECT count(*) AS child_sessions FROM claude.v_session_lineage l WHERE l.is_child AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ',')))"
         }
       ]
     },
@@ -129,7 +119,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS parent_sessions FROM claude.v_session_lineage l WHERE l.is_parent AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${session_id}' = '' OR l.session_id = ${session_id:sqlstring})"
+          "rawSql": "SELECT count(*) AS parent_sessions FROM claude.v_session_lineage l WHERE l.is_parent AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ',')))"
         }
       ]
     },
@@ -161,7 +151,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS families FROM claude.v_session_family f WHERE f.chain_length > 1 AND ('${session_id}' = '' OR EXISTS (SELECT 1 FROM claude.v_session_lineage l WHERE l.root_session_id = f.root_session_id AND l.session_id = ${session_id:sqlstring}))"
+          "rawSql": "SELECT count(*) AS families FROM claude.v_session_family f WHERE f.chain_length > 1"
         }
       ]
     },
@@ -209,7 +199,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS orphan_children FROM claude.v_session_lineage l WHERE l.is_child AND NOT l.parent_ingested AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${session_id}' = '' OR l.session_id = ${session_id:sqlstring})"
+          "rawSql": "SELECT count(*) AS orphan_children FROM claude.v_session_lineage l WHERE l.is_child AND NOT l.parent_ingested AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ',')))"
         }
       ]
     },
@@ -231,7 +221,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT f.root_session_id, f.chain_length, CASE WHEN f.chain_length > 1 THEN coalesce(nullif(s.ai_title, ''), left(f.root_session_id::text, 8)) || ' (' || f.chain_length || ' sessions)' END AS group_name, f.distinct_models, f.total_api_calls, f.total_input_tokens, f.total_output_tokens, f.family_span_seconds, f.family_first_event_at, f.family_last_event_at FROM claude.v_session_family f JOIN claude.v_session_token_summary s ON s.session_id = f.root_session_id WHERE ('${session_type:csv}' = '' OR (CASE WHEN f.chain_length > 1 THEN 'group' ELSE 'simple' END) = ANY(string_to_array('${session_type:csv}', ','))) AND ('${session_id}' = '' OR EXISTS (SELECT 1 FROM claude.v_session_lineage l WHERE l.root_session_id = f.root_session_id AND l.session_id = ${session_id:sqlstring})) ORDER BY f.family_first_event_at DESC"
+          "rawSql": "SELECT f.root_session_id, f.chain_length, CASE WHEN f.chain_length > 1 THEN coalesce(nullif(s.ai_title, ''), left(f.root_session_id::text, 8)) || ' (' || f.chain_length || ' sessions)' END AS group_name, f.distinct_models, f.total_api_calls, f.total_input_tokens, f.total_output_tokens, f.family_span_seconds, f.family_first_event_at, f.family_last_event_at FROM claude.v_session_family f JOIN claude.v_session_token_summary s ON s.session_id = f.root_session_id WHERE ('${session_type:csv}' = '' OR (CASE WHEN f.chain_length > 1 THEN 'group' ELSE 'simple' END) = ANY(string_to_array('${session_type:csv}', ','))) ORDER BY f.family_first_event_at DESC"
         }
       ],
       "fieldConfig": {
@@ -276,7 +266,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT l.session_id, l.session_role, l.parent_session_id, l.parent_ingested, sts.total_input_tokens, sts.output_tokens, sts.api_calls, sts.duration_seconds FROM claude.v_session_lineage l JOIN claude.v_session_token_summary sts USING (session_id) JOIN claude.v_session_family fam ON fam.root_session_id = l.root_session_id WHERE $__timeFilter(sts.first_event_at) AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = l.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) AND ('${session_type:csv}' = '' OR (CASE WHEN fam.chain_length > 1 THEN 'group' ELSE 'simple' END) = ANY(string_to_array('${session_type:csv}', ','))) AND ('${session_id}' = '' OR l.session_id = ${session_id:sqlstring}) ORDER BY sts.first_event_at DESC"
+          "rawSql": "SELECT l.session_id, l.session_role, l.parent_session_id, l.parent_ingested, sts.total_input_tokens, sts.output_tokens, sts.api_calls, sts.duration_seconds FROM claude.v_session_lineage l JOIN claude.v_session_token_summary sts USING (session_id) JOIN claude.v_session_family fam ON fam.root_session_id = l.root_session_id WHERE $__timeFilter(sts.first_event_at) AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = l.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) AND ('${session_type:csv}' = '' OR (CASE WHEN fam.chain_length > 1 THEN 'group' ELSE 'simple' END) = ANY(string_to_array('${session_type:csv}', ','))) ORDER BY sts.first_event_at DESC"
         }
       ],
       "fieldConfig": {
@@ -356,7 +346,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT gs AS time, l.session_role, coalesce(sum(c.total_input_tokens),0) + coalesce(sum(c.output_tokens),0) AS tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END LEFT JOIN claude.v_session_lineage l ON l.session_id = c.session_id WHERE ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${session_id}' = '' OR c.session_id = ${session_id:sqlstring}) GROUP BY gs, l.session_role ORDER BY gs"
+          "rawSql": "SELECT gs AS time, l.session_role, coalesce(sum(c.total_input_tokens),0) + coalesce(sum(c.output_tokens),0) AS tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END LEFT JOIN claude.v_session_lineage l ON l.session_id = c.session_id WHERE ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs, l.session_role ORDER BY gs"
         }
       ]
     }

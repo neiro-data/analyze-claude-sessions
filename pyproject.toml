@@ -70,7 +70,8 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q -m 'not slow'"
+addopts = "-q -m 'not slow and not live_db'"
 markers = [
     "slow: loads the real SentenceTransformer model and/or the network; opt-in with -m slow",
+    "live_db: needs a running Postgres with sql/*.sql applied; opt-in with -m live_db",
 ]
