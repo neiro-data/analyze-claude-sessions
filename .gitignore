@@ -17,6 +17,7 @@ data/csv/
 data/parquet/
 data/backups/
 data/reports/
+data/nlp_cache/
 !data/csv/.gitkeep
 !data/parquet/.gitkeep
 
@@ -25,4 +26,5 @@ data/reports/
 claude_interaction_steps.md
 *[Hh][Aa][Nn][Dd][Oo][Ff][Ff]*.md
 plan-*.md
-to-do-*.md
+to-do-*.mdhandoff-*.md
+handoff-*/

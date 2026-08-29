@@ -289,6 +289,10 @@ class FakeHashBackend:
     def __init__(self, dim: int = _FAKE_EMBEDDING_DIM) -> None:
         self._dim = dim
 
+    @property
+    def model_name(self) -> str:
+        return f"fake-hash-backend-{self._dim}"
+
     def encode(self, texts: list[str]) -> NDArray[np.float32]:
         """Return one bag-of-hashed-tokens vector per input text."""
         matrix = np.zeros((len(texts), self._dim), dtype=np.float32)

@@ -368,13 +368,25 @@ def test_filter_examples_session_scoped_false_keeps_untagged() -> None:
 class _FakeBackend:
     """Deterministic fake encoder: maps known strings to fixed unit vectors."""
 
-    def __init__(self, vectors: dict[str, list[float]], default: list[float] | None = None) -> None:
+    def __init__(
+        self,
+        vectors: dict[str, list[float]],
+        default: list[float] | None = None,
+        model_name: str = "fake-model",
+    ) -> None:
         self._vectors = vectors
         self._default = default or [0.0, 0.0, 1.0]
+        self._model_name = model_name
+        self.encode_call_count = 0
 
     def encode(self, texts: list[str]) -> np.ndarray:
+        self.encode_call_count += 1
         rows = [self._vectors.get(text, self._default) for text in texts]
         return np.asarray(rows, dtype=np.float32)
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
 
 def _examples() -> list[NlpExample]:
@@ -385,7 +397,7 @@ def _examples() -> list[NlpExample]:
     ]
 
 
-def test_catalog_retriever_ranks_by_similarity() -> None:
+def test_catalog_retriever_ranks_by_similarity(tmp_path: Path) -> None:
     vectors = {
         "how many sessions": [1.0, 0.0, 0.0],
         "how many projects": [0.9, 0.1, 0.0],
@@ -393,7 +405,7 @@ def test_catalog_retriever_ranks_by_similarity() -> None:
         "sessions count?": [1.0, 0.0, 0.0],
     }
     backend = _FakeBackend(vectors)
-    retriever = CatalogRetriever(_examples(), backend)
+    retriever = CatalogRetriever(_examples(), backend, cache_dir=tmp_path)
 
     ranked = retriever.search("sessions count?", top_k=3)
 
@@ -401,7 +413,7 @@ def test_catalog_retriever_ranks_by_similarity() -> None:
     assert ranked[0][1] == pytest.approx(1.0, abs=1e-5)
 
 
-def test_catalog_retriever_top_k_truncation() -> None:
+def test_catalog_retriever_top_k_truncation(tmp_path: Path) -> None:
     vectors = {
         "how many sessions": [1.0, 0.0, 0.0],
         "how many projects": [0.9, 0.1, 0.0],
@@ -409,7 +421,7 @@ def test_catalog_retriever_top_k_truncation() -> None:
         "sessions count?": [1.0, 0.0, 0.0],
     }
     backend = _FakeBackend(vectors)
-    retriever = CatalogRetriever(_examples(), backend)
+    retriever = CatalogRetriever(_examples(), backend, cache_dir=tmp_path)
 
     ranked = retriever.search("sessions count?", top_k=1)
 
@@ -417,7 +429,7 @@ def test_catalog_retriever_top_k_truncation() -> None:
     assert ranked[0][0].example_id == 1
 
 
-def test_catalog_retriever_confidence_threshold() -> None:
+def test_catalog_retriever_confidence_threshold(tmp_path: Path) -> None:
     vectors = {
         "how many sessions": [1.0, 0.0, 0.0],
         "how many projects": [0.0, 1.0, 0.0],
@@ -425,7 +437,7 @@ def test_catalog_retriever_confidence_threshold() -> None:
         "completely unrelated gibberish": [-1.0, -1.0, -1.0],
     }
     backend = _FakeBackend(vectors)
-    retriever = CatalogRetriever(_examples(), backend)
+    retriever = CatalogRetriever(_examples(), backend, cache_dir=tmp_path)
 
     ranked = retriever.search("completely unrelated gibberish", top_k=3)
     top_score = ranked[0][1]
@@ -437,6 +449,142 @@ def test_catalog_retriever_confidence_threshold() -> None:
 def test_catalog_retriever_empty_examples_returns_empty() -> None:
     retriever = CatalogRetriever([], _FakeBackend({}))
     assert retriever.search("anything") == []
+
+
+# --------------------------------------------------------------------------
+# CatalogRetriever embedding cache
+# --------------------------------------------------------------------------
+
+
+def test_catalog_retriever_cache_hit_skips_encode(tmp_path: Path) -> None:
+    backend = _FakeBackend(
+        {
+            "how many sessions": [1.0, 0.0, 0.0],
+            "how many projects": [0.9, 0.1, 0.0],
+            "total tokens used": [0.0, 1.0, 0.0],
+        }
+    )
+    CatalogRetriever(_examples(), backend, cache_dir=tmp_path)
+    assert backend.encode_call_count == 1
+
+    CatalogRetriever(_examples(), backend, cache_dir=tmp_path)
+
+    assert backend.encode_call_count == 1
+
+
+def test_catalog_retriever_changed_catalog_forces_reencode(tmp_path: Path) -> None:
+    backend = _FakeBackend(
+        {
+            "how many sessions": [1.0, 0.0, 0.0],
+            "how many projects": [0.9, 0.1, 0.0],
+            "total tokens used": [0.0, 1.0, 0.0],
+            "a brand new question": [0.0, 0.0, 1.0],
+        }
+    )
+    CatalogRetriever(_examples(), backend, cache_dir=tmp_path)
+    assert backend.encode_call_count == 1
+
+    changed_examples = [
+        NlpExample(example_id=1, question="a brand new question", sql_text="SELECT 1"),
+        NlpExample(example_id=2, question="how many projects", sql_text="SELECT 2"),
+        NlpExample(example_id=3, question="total tokens used", sql_text="SELECT 3"),
+    ]
+    CatalogRetriever(changed_examples, backend, cache_dir=tmp_path)
+
+    assert backend.encode_call_count == 2
+
+
+def test_catalog_retriever_corrupt_cache_falls_back_to_encode(tmp_path: Path) -> None:
+    backend = _FakeBackend(
+        {
+            "how many sessions": [1.0, 0.0, 0.0],
+            "how many projects": [0.9, 0.1, 0.0],
+            "total tokens used": [0.0, 1.0, 0.0],
+        }
+    )
+    CatalogRetriever(_examples(), backend, cache_dir=tmp_path)
+    assert backend.encode_call_count == 1
+
+    cache_key = nlp_mod._catalog_cache_key(backend.model_name, _examples())
+    npy_path = tmp_path / f"{cache_key}.npy"
+    npy_path.write_bytes(b"not a valid npy file")
+
+    retriever = CatalogRetriever(_examples(), backend, cache_dir=tmp_path)
+
+    assert backend.encode_call_count == 2
+    assert retriever.search("how many sessions") != []
+
+
+def test_catalog_retriever_deleted_cache_falls_back_to_encode(tmp_path: Path) -> None:
+    backend = _FakeBackend(
+        {
+            "how many sessions": [1.0, 0.0, 0.0],
+            "how many projects": [0.9, 0.1, 0.0],
+            "total tokens used": [0.0, 1.0, 0.0],
+        }
+    )
+    CatalogRetriever(_examples(), backend, cache_dir=tmp_path)
+    assert backend.encode_call_count == 1
+
+    cache_key = nlp_mod._catalog_cache_key(backend.model_name, _examples())
+    (tmp_path / f"{cache_key}.npy").unlink()
+
+    CatalogRetriever(_examples(), backend, cache_dir=tmp_path)
+
+    assert backend.encode_call_count == 2
+
+
+def test_catalog_retriever_cached_and_uncached_search_are_identical(tmp_path: Path) -> None:
+    vectors = {
+        "how many sessions": [1.0, 0.0, 0.0],
+        "how many projects": [0.9, 0.1, 0.0],
+        "total tokens used": [0.0, 1.0, 0.0],
+        "sessions count?": [1.0, 0.0, 0.0],
+    }
+    uncached_backend = _FakeBackend(vectors)
+    uncached_retriever = CatalogRetriever(_examples(), uncached_backend, cache_dir=tmp_path / "a")
+    uncached_results = uncached_retriever.search("sessions count?", top_k=3)
+
+    cached_backend = _FakeBackend(vectors)
+    CatalogRetriever(_examples(), cached_backend, cache_dir=tmp_path / "b")
+    cached_retriever = CatalogRetriever(_examples(), cached_backend, cache_dir=tmp_path / "b")
+    assert cached_backend.encode_call_count == 1
+    cached_results = cached_retriever.search("sessions count?", top_k=3)
+
+    assert [e.example_id for e, _ in uncached_results] == [e.example_id for e, _ in cached_results]
+    for (_, uncached_score), (_, cached_score) in zip(
+        uncached_results, cached_results, strict=True
+    ):
+        assert uncached_score == cached_score
+
+
+def test_catalog_cache_key_order_independent() -> None:
+    examples = _examples()
+    reversed_examples = list(reversed(examples))
+
+    assert nlp_mod._catalog_cache_key("model-a", examples) == nlp_mod._catalog_cache_key(
+        "model-a", reversed_examples
+    )
+
+
+def test_catalog_cache_key_changes_with_model_name() -> None:
+    examples = _examples()
+
+    assert nlp_mod._catalog_cache_key("model-a", examples) != nlp_mod._catalog_cache_key(
+        "model-b", examples
+    )
+
+
+def test_catalog_cache_key_changes_with_question_text() -> None:
+    examples = _examples()
+    changed = [
+        NlpExample(example_id=1, question="different question", sql_text="SELECT 1"),
+        *examples[1:],
+    ]
+
+    assert nlp_mod._catalog_cache_key("model-a", examples) != nlp_mod._catalog_cache_key(
+        "model-a", changed
+    )
 
 
 # --------------------------------------------------------------------------
