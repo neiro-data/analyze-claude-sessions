@@ -5,7 +5,10 @@
   "version": 1,
   "editable": false,
   "timezone": "utc",
-  "time": { "from": "now-30d", "to": "now" },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
   "templating": {
     "list": [
       {
@@ -16,20 +19,42 @@
         "multi": true,
         "includeAll": true,
         "allValue": "",
-        "current": { "text": "All", "value": "$__all" }
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "session_type",
+        "label": "Session type",
+        "type": "custom",
+        "query": "Simple (standalone) : simple, Group (multi-session) : group",
+        "multi": true,
+        "includeAll": true,
+        "allValue": "",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       },
       {
         "name": "model",
         "label": "Model",
         "type": "query",
-        "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+        "datasource": {
+          "type": "postgres",
+          "uid": "claude-analytics-pg"
+        },
         "query": "SELECT DISTINCT model AS __text, model AS __value FROM claude.api_calls WHERE model IS NOT NULL ORDER BY model",
         "refresh": 2,
         "sort": 1,
         "multi": true,
         "includeAll": true,
         "allValue": "",
-        "current": { "text": "All", "value": "$__all" }
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -38,10 +63,24 @@
       "id": 1,
       "title": "Child sessions",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
@@ -56,10 +95,24 @@
       "id": 2,
       "title": "Parent sessions",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
@@ -74,10 +127,24 @@
       "id": 3,
       "title": "Families",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
@@ -92,18 +159,37 @@
       "id": 4,
       "title": "Orphan children",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "red", "value": 10 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
             ]
           }
         },
@@ -119,45 +205,40 @@
     },
     {
       "id": 5,
-      "title": "Session families",
+      "title": "Grouped sessions",
       "type": "table",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 4 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT f.root_session_id, f.chain_length, CASE WHEN f.chain_length > 1 THEN f.root_session_id END AS combined_view, f.distinct_models, f.total_api_calls, f.total_input_tokens, f.total_output_tokens, f.family_span_seconds, f.family_first_event_at, f.family_last_event_at FROM claude.v_session_family f ORDER BY f.family_first_event_at DESC"
+          "rawSql": "SELECT f.root_session_id, f.chain_length, CASE WHEN f.chain_length > 1 THEN coalesce(nullif(s.ai_title, ''), left(f.root_session_id::text, 8)) || ' (' || f.chain_length || ' sessions)' END AS group_name, f.distinct_models, f.total_api_calls, f.total_input_tokens, f.total_output_tokens, f.family_span_seconds, f.family_first_event_at, f.family_last_event_at FROM claude.v_session_family f JOIN claude.v_session_token_summary s ON s.session_id = f.root_session_id WHERE ('${session_type:csv}' = '' OR (CASE WHEN f.chain_length > 1 THEN 'group' ELSE 'simple' END) = ANY(string_to_array('${session_type:csv}', ','))) ORDER BY f.family_first_event_at DESC"
         }
       ],
       "fieldConfig": {
         "defaults": {},
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "root_session_id" },
+            "matcher": {
+              "id": "byName",
+              "options": "root_session_id"
+            },
             "properties": [
               {
                 "id": "links",
                 "value": [
                   {
-                    "title": "Open session detail",
-                    "url": "/d/acp-session-detail/session-detail?var-session_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "combined_view" },
-            "properties": [
-              { "id": "displayName", "value": "combined family view" },
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Open combined family dashboard",
-                    "url": "/d/acp-session-family/session-family?var-root_session_id=${__value.raw}&var-scope=all",
+                    "title": "Open group dashboard",
+                    "url": "/d/acp-session-group/multi-agent-group-sessions?var-root_session_id=${__value.raw}&var-scope=all",
                     "targetBlank": false
                   }
                 ]
@@ -171,20 +252,31 @@
       "id": 6,
       "title": "Sessions",
       "type": "table",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 13 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT l.session_id, l.session_role, l.parent_session_id, l.parent_ingested, sts.project_dir, sts.total_input_tokens, sts.output_tokens, sts.api_calls, sts.duration_seconds FROM claude.v_session_lineage l JOIN claude.v_session_token_summary sts USING (session_id) WHERE $__timeFilter(sts.first_event_at) AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = l.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) ORDER BY sts.first_event_at DESC"
+          "rawSql": "SELECT l.session_id, l.session_role, l.parent_session_id, l.parent_ingested, sts.total_input_tokens, sts.output_tokens, sts.api_calls, sts.duration_seconds FROM claude.v_session_lineage l JOIN claude.v_session_token_summary sts USING (session_id) JOIN claude.v_session_family fam ON fam.root_session_id = l.root_session_id WHERE $__timeFilter(sts.first_event_at) AND ('${role:csv}' = '' OR l.session_role = ANY(string_to_array('${role:csv}', ','))) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = l.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) AND ('${session_type:csv}' = '' OR (CASE WHEN fam.chain_length > 1 THEN 'group' ELSE 'simple' END) = ANY(string_to_array('${session_type:csv}', ','))) ORDER BY sts.first_event_at DESC"
         }
       ],
       "fieldConfig": {
         "defaults": {},
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "session_id" },
+            "matcher": {
+              "id": "byName",
+              "options": "session_id"
+            },
             "properties": [
               {
                 "id": "links",
@@ -199,7 +291,10 @@
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "parent_session_id" },
+            "matcher": {
+              "id": "byName",
+              "options": "parent_session_id"
+            },
             "properties": [
               {
                 "id": "links",
@@ -220,13 +315,33 @@
       "id": 7,
       "title": "Tokens over time by role",
       "type": "timeseries",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 23 },
-      "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "none" }
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
       },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",

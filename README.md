@@ -1,10 +1,10 @@
 # analyze-claude-projects
 
+## Resume
+
 Docker foundation for analysing Claude Code session transcripts: PostgreSQL 17 with the
 `pg_parquet` extension, a Python 3.12 ingestion CLI, and a star-ish schema over the
 per-API-call token/timing reports produced by `cache_report_per_call_timing.sh`.
-
-## Resume
 
 - **Stack:** Docker Compose (PostgreSQL 17 + `pg_parquet` 0.5.1, Python 3.12 app), `uv`,
   `polars`, `psycopg` 3, `typer`, `ruff`, `mypy`, `pytest`.
@@ -110,26 +110,31 @@ colored green <10s, yellow 10–30s, orange 30s–5m, red 5m–1h, dark blue >1h
 The session lineage dashboard tracks parent/child spawn chains: a session's `Origin
 session_id: <uuid>` marker (left by the `clear-cache-sonnet-low` handoff at the start of a
 child's first prompt) is captured into `sessions.parent_session_id`. It carries a `Role` filter
-(`parent` / `child` / `standalone`, default all) alongside the shared `Model` filter, a stat row
-(child/parent/family/orphan-child counts), a "Session families" table rolling up each chain's
-length, models used, and total tokens end to end, and a "Sessions" table with data links on both
-`session_id` and `parent_session_id`. `parent_session_id` is unvalidated and not a foreign key —
-the parent may never get ingested — so `parent_ingested` distinguishes a resolved parent from a
-merely claimed one. Wiring the role toggle into the other two dashboards is not done yet.
-The "Session families" table has a `combined family view` column that is populated only when
-`chain_length > 1`; clicking it opens the family dashboard below.
+(`parent` / `child` / `standalone`, default all), a `Session type` filter (`simple` for
+`chain_length = 1`, `group` for `chain_length > 1`, default all), and the shared `Model` filter,
+a stat row (child/parent/family/orphan-child counts), a "Grouped sessions" table rolling up each
+chain's length, models used, and total tokens end to end, and a "Sessions" table with data links
+on both `session_id` and `parent_session_id`. `parent_session_id` is unvalidated and not a
+foreign key — the parent may never get ingested — so `parent_ingested` distinguishes a resolved
+parent from a merely claimed one. Wiring the role toggle into the other two dashboards is not
+done yet. The "Grouped sessions" table has a `Group Name` column (empty for `chain_length = 1`,
+otherwise the same title shown atop the group dashboard); clicking `root_session_id` opens that
+group dashboard directly.
 
-The session family dashboard (uid `acp-session-family`) renders a whole spawn chain as one
-merged session — the Session Detail layout, but over every member at once. Pick a family with
-the `Family (root session)` variable (only chains with `chain_length > 1` are listed), then use
-the `Scope` toggle to switch between *All sessions in the family* and *Sessions 1..N-1 (drop
-most recent)* — useful for asking what the chain had cost before the newest handoff. Calls from
-all included sessions are merged into a single timestamp-ordered timeline (`family_call_index`
-is recomputed after the scope filter, so it stays contiguous under either setting), and the
-"Merged call timeline" panel gives each member its own colour with a legend; the "Family
-members" table doubles as the legend and links each member out to its own Session Detail.
-Backed by `claude.v_session_family_member` and `claude.v_family_call_detail`
-(`sql/009_family_dashboard_views.sql`). Members are ordered by first activity, so a member that was ingested but made no API call has no `first_event_at` and sorts last — the "drop most recent" toggle would drop that empty session rather than the true latest handoff.
+The Multi-agent group sessions dashboard (uid `acp-session-group`) renders a whole spawn chain
+as one merged session — the Session Detail layout, but over every member at once. Pick a group
+with the `Family (root session)` variable (only chains with `chain_length > 1` are listed), then
+use the `Scope` toggle to switch between *All sessions in the group* and any single member
+session by name — useful for isolating what one hop in the chain cost on its own. Calls from all
+included sessions are merged into a single timestamp-ordered timeline (`family_call_index` is
+recomputed after the scope filter, so it stays contiguous under any setting), and the "Merged
+call timeline" panel gives each member its own colour with a legend; the "Family members" table
+doubles as the legend and links each member out to its own Session Detail. "Cumulative tokens
+over wall-clock time" plots elapsed seconds since the group's first call rather than the
+dashboard's time range, so its x-axis always spans exactly the group's own duration. Backed by
+`claude.v_session_family_member` and `claude.v_family_call_detail`
+(`sql/009_family_dashboard_views.sql`). Members are ordered by first activity, so a member that
+was ingested but made no API call has no `first_event_at` and sorts last.
 
 ## How it fits together
 
@@ -284,5 +289,3 @@ entry, plus out-of-catalog questions) and prints recall@1, recall@3, and a false
 rate. It's marked `slow` and excluded from `make check` / the default `pytest` run since it
 loads a real model; run it by hand when changing retrieval and compare against the last
 printed numbers.
-
-See `HANDOFF.md` for what to do next.
