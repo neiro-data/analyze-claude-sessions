@@ -745,6 +745,48 @@
           "rawSql": "SELECT model, count(*) AS calls, sum(total_input_tokens + output_tokens) AS tokens FROM claude.v_call_detail WHERE session_id = ${session_id:sqlstring} AND ('${model:csv}' = '' OR model = ANY(string_to_array('${model:csv}', ','))) GROUP BY model ORDER BY tokens DESC"
         }
       ]
+    },
+    {
+      "id": 15,
+      "title": "API calls",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "call_index",
+            "desc": false
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT call_index, called_at, agent, model, description, total_input_tokens, output_tokens FROM claude.v_call_detail WHERE session_id = ${session_id:sqlstring} AND ('${model:csv}' = '' OR model = ANY(string_to_array('${model:csv}', ','))) ORDER BY call_index"
+        }
+      ]
     }
   ]
 }
