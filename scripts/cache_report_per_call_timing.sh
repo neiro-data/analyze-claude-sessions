@@ -90,28 +90,52 @@ output="${output_dir%/}/${base_filename}_${date_stamp}.csv"
 # Agent metadata is injected from outside because it lives in the sibling
 # .meta.json, not in the transcript records themselves.
 extract_prog='
-  select(.message.usage and .requestId)
-  | {
-      rid:         .requestId,
-      ts:          .timestamp,
-      uuid:        (.uuid // ""),
-      model:       (.message.model // ""),
-      input:       (.message.usage.input_tokens // 0),
-      write:       (.message.usage.cache_creation_input_tokens // 0),
-      read:        (.message.usage.cache_read_input_tokens // 0),
-      output:      (.message.usage.output_tokens // 0),
-      agent:       $agent,
-      agent_type:  $atype,
-      depth:       ($depth | tonumber),
-      parent:      $parent,
-      tool_use_id: $tuid,
-      description: $desc
-    }
+  def preview:
+    ( if   type == "string" then .
+      elif type == "array"  then ( map(select(.type? == "text") | .text?) | join("\n") )
+      else "" end )
+    | split("\n") | map(select(test("\\S"))) | (.[0] // "")
+    | gsub("\\s+"; " ") | .[0:200];
+
+  # Stateful pass: carries the last-seen user-turn preview forward so each
+  # usage-bearing record can be tagged with the prompt that triggered it.
+  foreach inputs as $r ({prev: "", cur: null};
+      if ($r.type? == "user")
+         and ($r.isMeta? != true)
+         and ($r.isCompactSummary? != true)
+         and (
+           ((($r.message.content? // "") | type) == "string")
+           or ((($r.message.content? // []) | type) == "array"
+               and (($r.message.content // []) | map(select(.type? == "text")) | length) > 0)
+         )
+      then {prev: ($r.message.content | preview), cur: $r}
+      else {prev: .prev, cur: $r} end
+    ;
+    select(.cur.message.usage and .cur.requestId)
+    | .cur as $c
+    | {
+        rid:         $c.requestId,
+        ts:          $c.timestamp,
+        uuid:        ($c.uuid // ""),
+        model:       ($c.message.model // ""),
+        input:       ($c.message.usage.input_tokens // 0),
+        write:       ($c.message.usage.cache_creation_input_tokens // 0),
+        read:        ($c.message.usage.cache_read_input_tokens // 0),
+        output:      ($c.message.usage.output_tokens // 0),
+        agent:       $agent,
+        agent_type:  $atype,
+        depth:       ($depth | tonumber),
+        parent:      $parent,
+        tool_use_id: $tuid,
+        description: $desc,
+        prompt:      .prev
+      }
+  )
 '
 
 # Collect tagged rows from the main transcript plus every sub-agent transcript.
 collect_rows() {
-  jq -c --arg agent "main" --arg atype "main" --arg depth "0" \
+  jq -c -n --arg agent "main" --arg atype "main" --arg depth "0" \
         --arg parent "" --arg tuid "" --arg desc "" \
         "$extract_prog" "$input"
 
@@ -134,7 +158,7 @@ collect_rows() {
       atype=""; desc=""; tuid=""; parent="main"; depth=1
     fi
 
-    jq -c --arg agent "$agent_id" --arg atype "$atype" --arg depth "$depth" \
+    jq -c -n --arg agent "$agent_id" --arg atype "$atype" --arg depth "$depth" \
           --arg parent "$parent" --arg tuid "$tuid" --arg desc "$desc" \
           "$extract_prog" "$sub"
   done
@@ -174,11 +198,11 @@ process_data() {
 rows_json=$(process_data)
 
 {
-  echo "call,timestamp,uuid,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,delta_seconds,delta_seconds_global,agent,agent_type,depth,parent_agent,model,tool_use_id,description"
+  echo "call,timestamp,uuid,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,delta_seconds,delta_seconds_global,agent,agent_type,depth,parent_agent,model,tool_use_id,description,prompt_preview"
   echo "$rows_json" | jq -r '.[] | [
     .call, .ts, .uuid, .input, .write, .read, .output,
     .delta_agent, .delta_global,
-    .agent, .agent_type, .depth, .parent, .model, .tool_use_id, .description
+    .agent, .agent_type, .depth, .parent, .model, .tool_use_id, .description, .prompt
   ] | @csv'
 } > "$output"
 

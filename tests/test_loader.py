@@ -35,6 +35,7 @@ def test_reads_reference_csv_into_staging_layout(csv_report: Path) -> None:
         "model",
         "tool_use_id",
         "description",
+        "prompt_preview",
     ]
     # column order mirrors _INT_COLUMNS then _TEXT_COLUMNS in loader.py
     assert frame.height == 2

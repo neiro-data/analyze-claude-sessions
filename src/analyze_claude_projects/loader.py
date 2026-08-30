@@ -30,6 +30,7 @@ _STAGING_COLUMNS = (
     "model",
     "tool_use_id",
     "description",
+    "prompt_preview",
 )
 
 _REQUIRED_CSV_COLUMNS = frozenset(
@@ -66,6 +67,7 @@ _TEXT_COLUMNS = (
     "model",
     "tool_use_id",
     "description",
+    "prompt_preview",
 )
 
 
@@ -79,6 +81,9 @@ def read_report_csv(report: CsvReport) -> pl.DataFrame:
     missing = _REQUIRED_CSV_COLUMNS - set(frame.columns)
     if missing:
         raise LoadError(f"{report.path.name} is missing columns: {sorted(missing)}")
+
+    if "prompt_preview" not in frame.columns:
+        frame = frame.with_columns(pl.lit("").alias("prompt_preview"))
 
     return frame.select(
         pl.col("call").cast(pl.Int32).alias("call_index"),
@@ -302,7 +307,8 @@ def load_api_calls(
             parent_agent          text,
             model                 text,
             tool_use_id           text,
-            description           text
+            description           text,
+            prompt_preview        text
         ) ON COMMIT DROP
         """
     )
@@ -318,13 +324,13 @@ def load_api_calls(
             transcript_id, session_id, csv_id, call_index, called_at, message_uuid,
             input_tokens, cache_write_tokens, cache_read_tokens, output_tokens,
             delta_seconds, delta_seconds_global, agent, agent_type, depth,
-            parent_agent, model, tool_use_id, description
+            parent_agent, model, tool_use_id, description, prompt_preview
         )
         SELECT DISTINCT ON (t.message_uuid)
             %s, %s, %s, t.call_index, t.called_at, t.message_uuid,
             t.input_tokens, t.cache_write_tokens, t.cache_read_tokens, t.output_tokens,
             t.delta_seconds, t.delta_seconds_global, t.agent, t.agent_type, t.depth,
-            t.parent_agent, t.model, t.tool_use_id, t.description
+            t.parent_agent, t.model, t.tool_use_id, t.description, t.prompt_preview
         FROM tmp_api_calls t
         WHERE t.message_uuid IS NOT NULL
         ORDER BY t.message_uuid, t.call_index
@@ -344,7 +350,8 @@ def load_api_calls(
             parent_agent          = EXCLUDED.parent_agent,
             model                 = EXCLUDED.model,
             tool_use_id           = EXCLUDED.tool_use_id,
-            description           = EXCLUDED.description
+            description           = EXCLUDED.description,
+            prompt_preview        = EXCLUDED.prompt_preview
         """,
         (transcript_id, str(session_id), csv_id),
     )
