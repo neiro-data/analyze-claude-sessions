@@ -339,7 +339,7 @@
     },
     {
       "id": 6,
-      "title": "Call timeline (tokens per call, by iteration)",
+      "title": "Call timeline (tokens per call, by agent)",
       "type": "barchart",
       "datasource": {
         "type": "postgres",
@@ -355,7 +355,7 @@
         {
           "id": "groupingToMatrix",
           "options": {
-            "columnField": "model",
+            "columnField": "agent_label",
             "rowField": "call_index",
             "valueField": "tokens",
             "emptyValue": "zero"
@@ -365,7 +365,7 @@
           "id": "organize",
           "options": {
             "renameByName": {
-              "call_index\\model": "call_index"
+              "call_index\\agent_label": "call_index"
             },
             "excludeByName": {},
             "indexByName": {}
@@ -430,7 +430,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT call_index, coalesce(model, 'unknown') AS model, sum(total_input_tokens + output_tokens) AS tokens FROM claude.v_call_detail WHERE session_id = ${session_id:sqlstring} AND ('${model:csv}' = '' OR model = ANY(string_to_array('${model:csv}', ','))) GROUP BY call_index, model ORDER BY call_index, model"
+          "rawSql": "WITH per_call AS (SELECT call_index, agent, coalesce(agent_type, 'main') AS agent_type, sum(total_input_tokens + output_tokens) AS tokens FROM claude.v_call_detail WHERE session_id = ${session_id:sqlstring} AND ('${model:csv}' = '' OR model = ANY(string_to_array('${model:csv}', ','))) GROUP BY call_index, agent, agent_type), agent_order AS (SELECT agent, agent_type, min(call_index) AS first_call FROM per_call GROUP BY agent, agent_type), labeled AS (SELECT agent, agent_type, CASE WHEN count(*) OVER (PARTITION BY agent_type) > 1 THEN agent_type || ' ' || row_number() OVER (PARTITION BY agent_type ORDER BY first_call) ELSE agent_type END AS agent_label FROM agent_order) SELECT pc.call_index, l.agent_label, sum(pc.tokens) AS tokens FROM per_call pc JOIN labeled l USING (agent, agent_type) GROUP BY pc.call_index, l.agent_label ORDER BY pc.call_index, l.agent_label"
         }
       ]
     },
@@ -743,6 +743,48 @@
           "refId": "A",
           "format": "table",
           "rawSql": "SELECT model, count(*) AS calls, sum(total_input_tokens + output_tokens) AS tokens FROM claude.v_call_detail WHERE session_id = ${session_id:sqlstring} AND ('${model:csv}' = '' OR model = ANY(string_to_array('${model:csv}', ','))) GROUP BY model ORDER BY tokens DESC"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "API calls",
+      "type": "table",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 59
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "call_index",
+            "desc": false
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT call_index, called_at, kind, agent, model, description, total_input_tokens, output_tokens FROM claude.v_call_detail WHERE session_id = ${session_id:sqlstring} AND ('${model:csv}' = '' OR model = ANY(string_to_array('${model:csv}', ','))) ORDER BY call_index"
         }
       ]
     }
