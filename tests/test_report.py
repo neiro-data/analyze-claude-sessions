@@ -17,7 +17,7 @@ needs_jq = pytest.mark.skipif(shutil.which("jq") is None, reason="jq is not inst
 EXPECTED_HEADER = (
     "call,timestamp,uuid,input_tokens,cache_write_tokens,cache_read_tokens,"
     "output_tokens,delta_seconds,delta_seconds_global,agent,agent_type,depth,"
-    "parent_agent,model,tool_use_id,description"
+    "parent_agent,model,tool_use_id,description,usage_records,output_tokens_raw"
 )
 
 
