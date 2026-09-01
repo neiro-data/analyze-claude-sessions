@@ -5,6 +5,12 @@ set -euo pipefail
 # cache_write/cache_read/input are identical across a requestId group → take .[0]
 # timestamp is taken from the first record of each requestId group (call start).
 #
+# A requestId group holds one record per assistant content block; Claude Code's
+# own `/stats` sums output_tokens across every record in the group without
+# dedup. usage_records (group size) and output_tokens_raw (sum of outputs)
+# preserve that non-deduplicated total; the other columns (output_tokens = max)
+# remain the deduplicated, true per-API-call numbers.
+#
 # SUMMARY: Processes Claude API call logs (JSONL) to extract per-call metrics:
 #   - Token usage (input, cache_write, cache_read, output)
 #   - Call timestamps and model
@@ -144,7 +150,11 @@ collect_rows() {
 process_data() {
   collect_rows | jq -s '
     group_by(.rid)
-    | map(.[0] + {output: ([.[].output] | max)})
+    | map(.[0] + {
+        output:            ([.[].output] | max),
+        usage_records:     length,
+        output_tokens_raw: ([.[].output] | add)
+      })
     | map(.ts_epoch = ((.ts | sub("\\.[0-9]+Z$"; "Z")) | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime))
     | sort_by(.ts)
     | to_entries
@@ -174,11 +184,12 @@ process_data() {
 rows_json=$(process_data)
 
 {
-  echo "call,timestamp,uuid,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,delta_seconds,delta_seconds_global,agent,agent_type,depth,parent_agent,model,tool_use_id,description"
+  echo "call,timestamp,uuid,input_tokens,cache_write_tokens,cache_read_tokens,output_tokens,delta_seconds,delta_seconds_global,agent,agent_type,depth,parent_agent,model,tool_use_id,description,usage_records,output_tokens_raw"
   echo "$rows_json" | jq -r '.[] | [
     .call, .ts, .uuid, .input, .write, .read, .output,
     .delta_agent, .delta_global,
-    .agent, .agent_type, .depth, .parent, .model, .tool_use_id, .description
+    .agent, .agent_type, .depth, .parent, .model, .tool_use_id, .description,
+    .usage_records, .output_tokens_raw
   ] | @csv'
 } > "$output"
 

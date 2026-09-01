@@ -30,6 +30,8 @@ _STAGING_COLUMNS = (
     "model",
     "tool_use_id",
     "description",
+    "usage_records",
+    "output_tokens_raw",
 )
 
 _REQUIRED_CSV_COLUMNS = frozenset(
@@ -80,12 +82,27 @@ def read_report_csv(report: CsvReport) -> pl.DataFrame:
     if missing:
         raise LoadError(f"{report.path.name} is missing columns: {sorted(missing)}")
 
+    # Older CSVs predate usage_records/output_tokens_raw; backfill them so a
+    # pre-change CSV still loads and yields duplicated_total_tokens == true total.
+    if "usage_records" in frame.columns:
+        usage_records_expr = pl.col("usage_records").cast(pl.Int64).alias("usage_records")
+    else:
+        usage_records_expr = pl.lit(1, dtype=pl.Int64).alias("usage_records")
+    if "output_tokens_raw" in frame.columns:
+        output_tokens_raw_expr = (
+            pl.col("output_tokens_raw").cast(pl.Int64).alias("output_tokens_raw")
+        )
+    else:
+        output_tokens_raw_expr = pl.col("output_tokens").cast(pl.Int64).alias("output_tokens_raw")
+
     return frame.select(
         pl.col("call").cast(pl.Int32).alias("call_index"),
         pl.col("timestamp").str.to_datetime(time_unit="us", time_zone="UTC").alias("called_at"),
         _blank_to_null("uuid").alias("message_uuid"),
         *(pl.col(name).cast(pl.Int64).alias(name) for name in _INT_COLUMNS),
         *(_blank_to_null(name).alias(name) for name in _TEXT_COLUMNS),
+        usage_records_expr,
+        output_tokens_raw_expr,
     ).sort("call_index")
 
 
@@ -302,7 +319,9 @@ def load_api_calls(
             parent_agent          text,
             model                 text,
             tool_use_id           text,
-            description           text
+            description           text,
+            usage_records         bigint,
+            output_tokens_raw     bigint
         ) ON COMMIT DROP
         """
     )
@@ -318,13 +337,15 @@ def load_api_calls(
             transcript_id, session_id, csv_id, call_index, called_at, message_uuid,
             input_tokens, cache_write_tokens, cache_read_tokens, output_tokens,
             delta_seconds, delta_seconds_global, agent, agent_type, depth,
-            parent_agent, model, tool_use_id, description
+            parent_agent, model, tool_use_id, description,
+            usage_records, output_tokens_raw
         )
         SELECT DISTINCT ON (t.message_uuid)
             %s, %s, %s, t.call_index, t.called_at, t.message_uuid,
             t.input_tokens, t.cache_write_tokens, t.cache_read_tokens, t.output_tokens,
             t.delta_seconds, t.delta_seconds_global, t.agent, t.agent_type, t.depth,
-            t.parent_agent, t.model, t.tool_use_id, t.description
+            t.parent_agent, t.model, t.tool_use_id, t.description,
+            t.usage_records, t.output_tokens_raw
         FROM tmp_api_calls t
         WHERE t.message_uuid IS NOT NULL
         ORDER BY t.message_uuid, t.call_index
@@ -344,7 +365,9 @@ def load_api_calls(
             parent_agent          = EXCLUDED.parent_agent,
             model                 = EXCLUDED.model,
             tool_use_id           = EXCLUDED.tool_use_id,
-            description           = EXCLUDED.description
+            description           = EXCLUDED.description,
+            usage_records         = EXCLUDED.usage_records,
+            output_tokens_raw     = EXCLUDED.output_tokens_raw
         """,
         (transcript_id, str(session_id), csv_id),
     )

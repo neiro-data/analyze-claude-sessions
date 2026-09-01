@@ -29,7 +29,7 @@
       "title": "Total tokens",
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
       "fieldConfig": {
         "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
         "overrides": []
@@ -43,11 +43,48 @@
       ]
     },
     {
+      "id": 14,
+      "title": "Duplicated tokens (/stats)",
+      "type": "stat",
+      "description": "Mirrors Claude Code's own /stats non-deduplicated arithmetic (dailyModelTokens in ~/.claude/stats-cache.json); expected to exceed \"Total tokens\", which is the deduplicated truth.",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT coalesce(sum(c.duplicated_total_tokens),0) AS duplicated_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Cache-write tokens",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT coalesce(sum(c.cache_write_tokens),0) AS cache_write_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+        }
+      ]
+    },
+    {
       "id": 2,
       "title": "Total sessions",
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 4 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "fixed", "fixedColor": "text" } },
         "overrides": []
@@ -65,7 +102,7 @@
       "title": "Total API calls",
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 4 },
       "fieldConfig": {
         "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
         "overrides": []
@@ -83,7 +120,7 @@
       "title": "Cache-read %",
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 4 },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -112,7 +149,7 @@
       "title": "Total duration",
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 4 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 8 },
       "fieldConfig": {
         "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "text" } },
         "overrides": []
@@ -130,7 +167,7 @@
       "title": "Average session duration",
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 4 },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 8 },
       "fieldConfig": {
         "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "text" } },
         "overrides": []
@@ -148,7 +185,7 @@
       "title": "Average API call duration",
       "type": "stat",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 4 },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 8 },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -177,7 +214,7 @@
       "title": "Tokens over time",
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 12 },
       "fieldConfig": {
         "defaults": { "unit": "short" },
         "overrides": [
@@ -207,7 +244,7 @@
       "title": "API calls over time",
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 17 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 21 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
         {
@@ -222,7 +259,7 @@
       "title": "Cache efficiency",
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 26 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 30 },
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "none" }
@@ -292,7 +329,7 @@
       "title": "Session explorer",
       "type": "table",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 35 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 39 },
       "targets": [
         {
           "refId": "A",

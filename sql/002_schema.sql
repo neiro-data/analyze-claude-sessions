@@ -190,6 +190,13 @@ CREATE TABLE IF NOT EXISTS claude.api_calls (
     description          text,
     total_input_tokens  integer
         GENERATED ALWAYS AS (input_tokens + cache_write_tokens + cache_read_tokens) STORED,
+    usage_records       integer     NOT NULL DEFAULT 1 CHECK (usage_records > 0),
+    output_tokens_raw   integer     NOT NULL DEFAULT 0 CHECK (output_tokens_raw >= 0),
+    duplicated_total_tokens integer
+        GENERATED ALWAYS AS (
+            usage_records * (input_tokens + cache_write_tokens + cache_read_tokens)
+            + output_tokens_raw
+        ) STORED,
     created_at          timestamptz NOT NULL DEFAULT now(),
     UNIQUE (transcript_id, message_uuid)
 );
@@ -201,7 +208,7 @@ CREATE INDEX IF NOT EXISTS api_calls_depth_idx      ON claude.api_calls (session
 CREATE INDEX IF NOT EXISTS api_calls_model_idx      ON claude.api_calls (model);
 
 COMMENT ON TABLE claude.api_calls IS
-    'Columns call_index..description map 1:1 onto the CSV produced by '
+    'Columns call_index..output_tokens_raw map 1:1 onto the CSV produced by '
     'cache_report_per_call_timing.sh.';
 
 -- ---------------------------------------------------------------------------
