@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS claude.nlp_examples (
     -- Typed filters this row's sql_text can bind, e.g. '[{"name": "session_id",
     -- "type": "session_id"}]'. One entry per `%s` placeholder, in bind order.
     -- See src/analyze_claude_projects/nlp.py:SlotSpec. A fresh install (this
-    -- file) and a migrated one (sql/008_nlp_slots.sql) must agree exactly.
+    -- file) and a migrated one (sql/009_nlp_slots.sql) must agree exactly.
     slots       jsonb       NOT NULL DEFAULT '[]',
     created_at  timestamptz NOT NULL DEFAULT now(),
     UNIQUE (question)
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS claude.nlp_examples (
 -- in filename order. On an install migrated before `slots` existed, this
 -- file's own INSERT below (which lists `slots`) would fail unless the
 -- column is guaranteed present *before* it runs -- it cannot rely on
--- sql/008_nlp_slots.sql, which sorts after this file and would already be
+-- sql/009_nlp_slots.sql, which sorts after this file and would already be
 -- too late. Idempotent on a fresh install too, where the CREATE TABLE above
 -- already includes the column.
 ALTER TABLE claude.nlp_examples ADD COLUMN IF NOT EXISTS slots jsonb NOT NULL DEFAULT '[]';

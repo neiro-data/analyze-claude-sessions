@@ -1,362 +1,103 @@
 # analyze-claude-projects
 
+
 ## Resume
 
-Docker foundation for analysing Claude Code session transcripts: PostgreSQL 17 with the
-`pg_parquet` extension, a Python 3.12 ingestion CLI, and a star-ish schema over the
-per-API-call token/timing reports produced by `cache_report_per_call_timing.sh`.
+This tool analyzes Claude Code session transcripts. It runs in Docker.
+
+The stack has three parts: PostgreSQL 17 with the `pg_parquet` extension, a Python 3.12
+ingestion CLI, and a schema built over the per-API-call token and timing reports that
+`cache_report_per_call_timing.sh` produces.
 
 - **Stack:** Docker Compose (PostgreSQL 17 + `pg_parquet` 0.5.1, Python 3.12 app), `uv`,
   `polars`, `psycopg` 3, `typer`, `ruff`, `mypy`, `pytest`.
-- **What it does:** walks `~/.claude/projects/**/*.jsonl`, runs the vendored shell report per
-  transcript to produce a CSV, and loads those CSVs plus transcript metadata into the
-  `claude` schema in PostgreSQL. Exports any table or view to Parquet through `pg_parquet`.
-- **Start here:** `make build` (slow the first time — it compiles `pg_parquet` from source),
-  then `make ingest`, then `make stats`.
-- **Everything runs in containers.** The host only needs Docker and `make`; `uv` is needed
-  only for the local dev targets (`make check`).
-- **Entry point:** `src/analyze_claude_projects/cli.py` (`acp` console script).
-- **Schema:** `sql/002_schema.sql` (tables) and `sql/003_views.sql` (reporting views).
+- **What it does:** it walks `~/.claude/projects/**/*.jsonl`. It runs the vendored shell
+  report on each transcript to produce a CSV. It loads the CSVs and transcript metadata into
+  the `claude` schema in PostgreSQL. It can export any table or view to Parquet through
+  `pg_parquet`.
+- **Entry point:** `src/analyze_claude_projects/cli.py` (the `acp` console script).
+- **Everything runs in containers.** The host only needs Docker and `make`. `uv` is needed
+  only for local dev commands (`make check`).
 
-## Quick guide
+## Agent read 
+If you are an AI agent, read also [README_AGENT.md](README_AGENT.md).
 
-### First-time setup
+## Quick start
 
 ```bash
 make env          # writes .env with your real CLAUDE_PROJECTS_DIR
 make build        # builds both images (first run compiles pg_parquet, ~10-20 min)
 make up           # starts PostgreSQL, waits for healthy
 make init-db      # applies sql/*.sql (also runs automatically on a fresh volume)
+make ingest       # loads your transcripts into PostgreSQL
+make stats        # prints ingest summary stats
 ```
 
-### Routine ops
-
-- `bin/ingest.sh [--project X | --force]` — ingest new transcripts and refresh parquet
-  (idempotent; safe to cron).
-- `bin/backup-db.sh [DEST]` — back up the DB (pg_dump custom format) and parquet exports
-  to `DEST` (default `./data/backups`).
-- `bin/prune-csv.sh [--days N] [--delete] --yes` — trim/archive the `data/csv/` audit
-  folder; parquet + Postgres are the durable audit copy, so the raw CSVs are prunable.
-
-`make ingest ARGS="--project billing"` narrows to one project;
-`ARGS="--force"` re-reports transcripts that are byte-identical to what is already loaded
-(both covered by `bin/ingest.sh`). `make stats`, `make psql`, and `make export-parquet`
-are still available directly.
-
-### Ad-hoc charts without the database (DuckDB over `data/parquet/`)
-
-With the stack **down**, `scripts/duckdb_parquet.py` opens the pg_parquet exports directly
-via DuckDB's `read_parquet` — no PostgreSQL, no containers:
-
-```bash
-uv run python scripts/duckdb_parquet.py                    # example aggregations
-uv run python scripts/duckdb_parquet.py --sql "SELECT model, count(*) FROM read_parquet('data/parquet/api_calls.parquet') GROUP BY model"
-```
-
-Requires `data/parquet/*.parquet` to already exist (`make export-parquet`, or any prior
-`make ingest` run — export happens automatically at the end of the pipeline).
-### Scheduled ingest (macOS / launchd)
-
-`bin/ingest.sh` is safe to run unattended, but nothing schedules it by default --
-`make install-timer` is the explicit, one-time opt-in:
-
-```bash
-make install-timer     # installs + loads a launchd agent, runs bin/ingest.sh every 30 min
-make uninstall-timer   # unloads + removes it
-```
-
-This writes `~/Library/LaunchAgents/com.analyze-claude-projects.ingest.plist` from
-`bin/launchd/com.analyze-claude-projects.ingest.plist.template`, resolving the repo root and
-`docker`'s directory into an explicit `PATH` (launchd jobs start with a minimal environment, no
-shell profile). Logs go to `data/logs/ingest.launchd.{out,err}.log`; a completed run also shows
-up in `claude.ingest_runs` (`acp query "select * from claude.ingest_runs order by run_id desc
-limit 5"`). Requires Docker Desktop (or equivalent) to be running at the scheduled time --
-`bin/ingest.sh` starts the `postgres` container itself but not the Docker daemon.
-
-Check/trigger manually:
-
-```bash
-launchctl list | grep com.analyze-claude-projects.ingest
-launchctl start com.analyze-claude-projects.ingest   # run once, right now
-```
-
-### Natural-language queries (`acp ask`)
-
-Run it from the project root with `uv`:
-
-```bash
-uv run acp ask "how many tokens were spent per model?"
-# scope a session-specific query with session_id=<id>, or just paste a bare UUID:
-uv run acp ask "cache report session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5"
-uv run acp ask "1500e4c2-9021-4496-860e-5f99ec8ee7f5 cache report"
-```
-
-(`acp` also lives **inside the app container** — `docker compose run --rm app ask "…"`,
-or `make shell` then `acp ask "…"` — if you'd rather not run it on the host.)
-
-It matches your question against a curated catalog of SQL queries (`claude.nlp_examples`,
-seeded by `sql/005_nlp_catalog.sql`) using local sentence embeddings, then runs the best
-match read-only. Fully offline — no network access or API key. Add `--sql` to see the
-matched query, `--no-execute` to only preview it. If nothing matches confidently, it prints
-the closest candidate questions instead of guessing.
-
-**Slot-aware matching.** Each catalog row declares the filters its SQL can actually bind
-(`session_id`, `since`, `project`, `model`, `limit` — see the `slots` column). Your question
-is parsed for the same filters (`session_id=<id>` or a bare UUID; `since 2026-01[-15]`;
-`last N days`; `last month`, meaning the previous calendar month, not a trailing 30-day
-window; a known project or model name; `top N`). If the best-matching row can't bind a
-filter your question carries — e.g. "tokens per model **last month**" matching the all-time
-"tokens per model" template — `ask` **refuses** rather than silently running the unfiltered
-query, and prints the near-matches instead:
-
-```
-$ uv run acp ask "tokens per model last month"
-Refusing: your question filters by since ('2026-02-01') but the closest match
-"how many tokens were spent per model" has no such filter. Try one of these instead:
-  [0.71] how many tokens were spent per model
-  ...
-```
-
-The embedding model (numpy, sentence-transformers) lives in the optional `nlp` dependency
-group. The app image ships without it, so `ask` prints an install hint if it is missing;
-enable it with a one-time `uv sync --group nlp` (locally) or by rebuilding the image with
-that group. Every other `acp` command works without it.
+For every other command — ingest options, backups, the natural-language query tool
+(`acp ask`), the RAG stress suite, and dev commands — see
+**[scripts-guide.md](scripts-guide.md)**.
 
 ## Dashboard
 
-`make dashboard` (or `make up-grafana`) starts PostgreSQL plus a provisioned Grafana instance
-at `http://localhost:${GRAFANA_PORT:-3000}` — datasource and dashboards (usage overview,
-per-session detail, session lineage) are loaded automatically from `docker/grafana/`, no manual
-import needed.
-Grafana runs with anonymous Editor access and no login, by design for local single-user use;
-the port is bound to `127.0.0.1` only — don't expose it beyond localhost.
-
-Both dashboards render in UTC and carry a `Model` filter (defaults to all models combined).
-The overview shows token/call/duration totals plus time series and a session explorer; its
-"Cache efficiency" panel stacks cache-write and cache-read token bars (right axis) under the
-cache-read % line (left axis) — the bar total is cache tokens only, not total input tokens.
-The session detail dashboard's session picker lists raw session UUIDs, and a header panel
-above the stat row shows the AI-generated session title (falling back to the UUID when none
-exists). It breaks a single session down per API call (tokens, cache-read %, context growth,
-time between calls) with a Cache-read % color code (green ≥90%, yellow 60–90%, red <60%)
-shared across both dashboards. The "Call timeline" panel stacks per-model token bars (one
-colour per model) when Model = All. "Context growth by call" is colored blue for negative
-growth, green 0–500 tokens, yellow 500–2k, orange 2k–10k, red >10k. "Time between calls" is
-colored green <10s, yellow 10–30s, orange 30s–5m, red 5m–1h, dark blue >1h.
-
-The session lineage dashboard tracks parent/child spawn chains: a session's `Origin
-session_id: <uuid>` marker (left by the `clear-cache-sonnet-low` handoff at the start of a
-child's first prompt) is captured into `sessions.parent_session_id`. It carries a `Role` filter
-(`parent` / `child` / `standalone`, default all), a `Session type` filter (`simple` for
-`chain_length = 1`, `group` for `chain_length > 1`, default all), and the shared `Model` filter,
-a stat row (child/parent/family/orphan-child counts), a "Grouped sessions" table rolling up each
-chain's length, models used, and total tokens end to end, and a "Sessions" table with data links
-on both `session_id` and `parent_session_id`. `parent_session_id` is unvalidated and not a
-foreign key — the parent may never get ingested — so `parent_ingested` distinguishes a resolved
-parent from a merely claimed one. Wiring the role toggle into the other two dashboards is not
-done yet. The "Grouped sessions" table has a `Group Name` column (empty for `chain_length = 1`,
-otherwise the same title shown atop the group dashboard); clicking `root_session_id` opens that
-group dashboard directly.
-
-The Multi-agent group sessions dashboard (uid `acp-session-group`) renders a whole spawn chain
-as one merged session — the Session Detail layout, but over every member at once. Pick a group
-with the `Family (root session)` variable (only chains with `chain_length > 1` are listed), then
-use the `Scope` toggle to switch between *All sessions in the group* and any single member
-session by name — useful for isolating what one hop in the chain cost on its own. Calls from all
-included sessions are merged into a single timestamp-ordered timeline (`family_call_index` is
-recomputed after the scope filter, so it stays contiguous under any setting), and the "Merged
-call timeline" panel gives each member its own colour with a legend; the "Family members" table
-doubles as the legend and links each member out to its own Session Detail. "Cumulative tokens
-over wall-clock time" plots elapsed seconds since the group's first call rather than the
-dashboard's time range, so its x-axis always spans exactly the group's own duration. Backed by
-`claude.v_session_family_member` and `claude.v_family_call_detail`
-(`sql/009_family_dashboard_views.sql`). Members are ordered by first activity, so a member that
-was ingested but made no API call has no `first_event_at` and sorts last.
-
-## How it fits together
-
-```
-~/.claude/projects/**/*.jsonl
-        │
-        ├─ jsonl_meta.py ──── streamed once for metadata (sha256, models, record histogram)
-        │
-        └─ scripts/cache_report_per_call_timing.sh   (bash + jq)
-                   │
-                   └─ data/csv/<session_id>/<stem>_<YYYYMMDDTHH:MM:SS>.csv
-                              │
-                              └─ loader.py (polars → COPY → upsert) → PostgreSQL
-                                                                          │
-                                                                          └─ pg_parquet
-                                                                             → data/parquet/
+```bash
+make dashboard    # or: make up-grafana
 ```
 
-### The transcript grain
+This starts PostgreSQL plus a provisioned Grafana instance at
+`http://localhost:${GRAFANA_PORT:-3000}`. Grafana loads its datasource and four dashboards
+automatically from `docker/grafana/`; you do not need to import anything.
 
-A session owns **more than one** `.jsonl` file:
+Grafana runs with anonymous Editor access and no login, by design for local, single-user
+use. Its port is bound to `127.0.0.1` — do not expose it beyond localhost.
 
-| Layout | Meaning |
+| Dashboard | Shows |
 | --- | --- |
-| `<project>/<session_id>.jsonl` | main session transcript |
-| `<project>/<session_id>/subagents/agent-<id>.jsonl` | one file per subagent it spawned |
+| **Usage overview** | Token/call/duration totals, time series, a session explorer, and a cache-efficiency panel. |
+| **Session detail** | One session broken down per API call: tokens, cache-read %, context growth, time between calls. |
+| **Session lineage** | Parent/child spawn chains, resolved from an `Origin session_id:` marker left by subagent handoffs. |
+| **Multi-agent group sessions** | One whole spawn chain, rendered as a merged session with a shared timeline. |
 
-Subagent files repeat the parent's `sessionId` but contain a **disjoint** set of
-`requestId`s — verified: zero overlap. They are real, additional API calls, and on this
-machine they account for **49% of all billed input tokens**. So the unit that maps 1:1 onto
-a CSV is `claude.transcripts`, not `claude.sessions`; a session is a rollup over its
-transcripts.
+All four dashboards share a `Model` filter (default: all models combined) and render in UTC.
+Full panel-by-panel detail — color scales, filter semantics, backing views — lives in
+[scripts-guide.md — Grafana dashboards](scripts-guide.md#grafana-dashboards).
 
-## Schema (`claude`)
+## RAG / NLP
 
-**Fact**
+`acp ask` answers natural-language questions ("how many tokens were spent per model?") by
+matching them against a curated SQL catalog with local sentence embeddings — fully offline,
+no API key. A separate opt-in stress suite checks retrieval quality and robustness.
 
-| Table | Grain | Notes |
-| --- | --- | --- |
-| `api_calls` | one Claude API call (one `requestId` group) | `call_index`…`delta_seconds` map 1:1 onto the CSV columns; `total_input_tokens` is a stored generated column |
+See **[scripts-guide.md — RAG / NLP](scripts-guide.md#rag--nlp-acp-ask)** for commands and
+how the matching works.
 
-**Metadata**
+## Schema
 
-| Table | Grain |
-| --- | --- |
-| `projects` | one directory under `~/.claude/projects` |
-| `sessions` | one Claude Code session, rolled up from its transcripts; `parent_session_id` is the claimed origin session (unvalidated, no FK) |
-| `transcripts` | one `.jsonl` file (`kind` = `session` \| `subagent`), with size, sha256, time window, models, CLI versions, git branches, per-type record counts |
-| `transcript_record_types` | `(transcript_id, type, subtype)` histogram |
+The `claude` schema holds one fact table (`api_calls`) plus metadata and audit tables, and a
+set of reporting views. A session is a rollup over its transcripts — a session can own more
+than one `.jsonl` file (see below).
 
-**Audit**
+Token counts come in two flavors: `api_calls`' core columns hold the true, deduplicated
+per-call usage, while a few extra columns reproduce Claude Code's own `/stats`, which
+double-counts output tokens. See
+[SCHEMA.md — `/stats` vs. deduplicated tokens](SCHEMA.md#stats-vs-deduplicated-tokens) for
+the full explanation.
 
-| Table | Grain |
-| --- | --- |
-| `ingest_runs` | one `acp ingest` invocation: counts, status, error text |
-| `csv_files` | one generated CSV: path, sha256, row count, owning run |
-| `parquet_exports` | one `pg_parquet` export |
-| `migrations` | which `sql/*.sql` was applied, and when |
-
-**`/stats` vs. deduplicated tokens** — a single API call can log multiple JSONL
-records under one `requestId` (one per assistant content block); `input_tokens`,
-`cache_creation_input_tokens` and `cache_read_input_tokens` are identical across
-that group, but `output_tokens` differs per record. `api_calls`' core columns
-dedupe the group (input/write/read taken once, `output_tokens = max(...)`) — the
-true per-call usage. Claude Code's own `/stats` (`dailyModelTokens` in
-`~/.claude/stats-cache.json`) doesn't dedupe: it sums `output_tokens` across every
-record with no grouping. `usage_records` (group size), `output_tokens_raw`
-(`sum(output)`), and the generated `duplicated_total_tokens` column
-(`usage_records * (input + write + read) + output_tokens_raw`) reproduce that
-inflated `/stats` arithmetic purely for comparison — they don't change the
-deduplicated truth in the other columns.
-
-**Views** — `v_transcript_token_summary`, `v_session_token_summary`,
-`v_project_token_summary`, `v_daily_token_usage`, `v_subagent_share`,
-`v_call_cache_efficiency` (per-call cache % and context growth),
-`v_long_gaps` (gaps ≥ 5 min), `v_ingest_status`, `v_session_lineage` (per-session
-parent/child role, resolved root and depth, cycle-safe), `v_session_family` (per-root chain
-rollup: length, models, total calls/tokens, first→last span).
-
-## `pg_parquet`
-
-CrunchyData ships no binaries or images for `pg_parquet`, so `docker/postgres/Dockerfile`
-builds it from a pinned source tag with `cargo-pgrx` in stage 1 and copies only the
-`.so` / `.control` / `.sql` into a clean `postgres:17-bookworm` in stage 2. Pins live in
-`.env` (`PG_MAJOR=17`, `PG_PARQUET_VERSION=0.5.1`, `PGRX_VERSION=0.16.0`). The extension is
-in `shared_preload_libraries` both via the image's `postgresql.conf.sample` and via an
-explicit `command:` flag in compose, so it survives a config override.
-
-`COPY ... TO` runs **inside the server**, so exports target the path the container sees
-(`/parquet`, bind-mounted to `./data/parquet`). Reads work too:
-
-```sql
-SELECT * FROM parquet.schema('/parquet/api_calls.parquet');
-SELECT * FROM parquet.file_metadata('/parquet/api_calls.parquet');
-COPY some_table FROM '/parquet/api_calls.parquet' WITH (format 'parquet');
-```
-
-## Changes to the vendored report script
-
-`scripts/cache_report_per_call_timing.sh` is a copy of `REPOS/scripts/…` with three fixes.
-The first two were needed to match the reference CSV and run on Linux; the third is a real
-bug that also affects the original:
-
-1. **Emits `parentUuid`.** The reference CSV has this column; upstream does not produce it.
-2. **Portable filename timestamp.** Upstream uses BSD-only `date -j -f`, which silently
-   falls back to *now* on Linux. Replaced with a `sed` transform, so macOS and the
-   container agree.
-3. **No more SIGPIPE.** `jq -r '.timestamp' "$f" | head -1` under `set -o pipefail` aborts
-   the script with exit 141 once the file is large enough for `jq` to still be writing when
-   `head` exits. This killed ~5 of the biggest transcripts. Replaced with
-   `jq -rn 'first(inputs | .timestamp // empty)'`, which short-circuits inside `jq`.
-
-## Verified run
-
-Against 250 transcripts in `~/.claude/projects` (2026-08-08):
-
-| | |
-| --- | --- |
-| Projects / sessions / transcripts | 11 / 103 / 250 (147 subagent) |
-| API calls loaded | 5,029 (0 failures) |
-| Billed input tokens | 324,912,925 |
-| Output tokens | 3,088,590 |
-| Cache read share of input | 95.96% |
-| Subagent share of input tokens | 49.15% |
-
-Integrity checks all pass: `csv_files` = transcripts with calls (225 = 225), no transcript
-whose loaded row count disagrees with its transcript-derived `api_call_count`, no orphan
-calls. Parquet round-trip (export 5,029 rows → `COPY FROM` → re-sum) matches exactly.
+Full table/view reference, the ingestion pipeline diagram, and the last verified run are in
+**[SCHEMA.md](SCHEMA.md)**.
 
 ## Layout
 
 ```
-docker/postgres/Dockerfile   two-stage pg_parquet build
-docker/app/Dockerfile        python:3.12-slim + bash + jq + uv
-docker-compose.yml           postgres service + app CLI (profile: cli)
-sql/                         001 extensions, 002 schema, 003 views
-scripts/                     vendored per-call timing report
-src/analyze_claude_projects/
-  config.py                  env-driven settings
-  discovery.py               find transcripts (main + subagent)
-  jsonl_meta.py              stream a transcript for metadata
-  report.py                  drive the shell script, locate the CSV
-  loader.py                  polars read + COPY + upsert
-  pipeline.py                per-transcript orchestration
-  parquet_export.py          pg_parquet COPY TO
-  db.py                      connections, migrations, run audit
-  cli.py                     `acp` commands
-tests/                       21 tests, no database required
+bin/                          ingest, backup, prune scripts + launchd templates
+docker/                       postgres (pg_parquet build) + app Dockerfiles, docker/grafana provisioning
+docker-compose.yml             postgres service + app CLI (profile: cli)
+sql/                           schema, views, and migrations (001–013)
+scripts/                       vendored report script, DuckDB ad-hoc queries, RAG stress harness
+src/analyze_claude_projects/   ingestion pipeline + `acp` CLI (see README_AGENT.md for a file map)
+tests/                         test suite, no database required
+data/                          csv/, parquet/, backups/, reports/ — all gitignored
+README.md                      this file — quick start and concept overview
+scripts-guide.md                every command, grouped by component
+SCHEMA.md                       data model reference
+README_AGENT.md                 agent-only background notes
 ```
-
-## Development
-
-```bash
-make venv       # uv sync
-make check      # ruff + mypy --strict + pytest
-```
-
-Ruff (100 cols, `E,F,I,W,UP,S,B`), `mypy --strict`, and the default test suite all pass. Tests
-mock nothing away that matters: the report tests shell out to the real script (skipped if
-`jq` is missing), and none of them need PostgreSQL.
-
-`acp ask`'s retrieval quality is tracked separately: `uv run pytest -m slow tests/test_nlp_eval.py -s`
-loads the real embedding model against `tests/data/nlp_eval.yaml` (paraphrases per catalog
-entry, plus out-of-catalog questions) and prints recall@1, recall@3, and a false-accept
-rate. It's marked `slow` and excluded from `make check` / the default `pytest` run since it
-loads a real model; run it by hand when changing retrieval and compare against the last
-printed numbers.
-
-### RAG stress suite (opt-in)
-
-A heavier, real-model stress battery lives in `tests/test_nlp_stress_slow.py` (all tests
-marked `slow`) and `scripts/rag_stress.py`. It measures perturbation robustness (typos,
-casing, punctuation, filler, truncation, unicode noise, …) against the clean baseline,
-sweeps `CONFIDENCE_THRESHOLD` from 0.30–0.75 against the in-catalog/out-of-catalog corpora,
-checks retrieval latency at 100/1k/10k rows, and re-runs the `ensure_read_only` adversarial
-corpus and slot-extraction fuzzing for regressions. `ensure_read_only` itself parses the
-SQL with `pglast` (real PostgreSQL grammar) rather than pattern-matching it, so quoting and
-escaping edge cases can't slip past it. Run it with:
-
-```bash
-uv run --group nlp pytest -m slow tests/test_nlp_stress_slow.py -s
-uv run --group nlp python scripts/rag_stress.py            # full battery, writes data/reports/
-uv run --group nlp python scripts/rag_stress.py --quick    # small/fast sanity run
-```
-
-or `make rag-stress` for the full report. It's excluded from `make check` and the default
-`pytest` run — same reasons as the eval above — and its reports (`data/reports/`) are
-gitignored scratch output, not tracked artifacts.

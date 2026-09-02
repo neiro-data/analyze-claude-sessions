@@ -2,7 +2,7 @@
 -- correct as new transcripts land.
 
 -- Per-transcript rollup: the finest grain that maps to one CSV.
--- DROP + CREATE (not OR REPLACE): 010_model_pricing.sql redefines this view with
+-- DROP + CREATE (not OR REPLACE): 008_model_pricing.sql redefines this view with
 -- an extra cost_usd column, and CREATE OR REPLACE VIEW can't drop columns -- so a
 -- second full `make init-db` run would fail here trying to shrink back to this
 -- shape. CASCADE is safe: only 005/008/009/010 depend on it, and all rerun after
@@ -34,7 +34,7 @@ GROUP BY t.transcript_id, t.session_id, t.kind, t.agent_id, p.dir_name,
          t.first_event_at, t.duration_seconds;
 
 -- Per-session rollup, main transcript and subagents combined.
--- DROP + CREATE: see v_transcript_token_summary above -- 010_model_pricing.sql
+-- DROP + CREATE: see v_transcript_token_summary above -- 008_model_pricing.sql
 -- adds a cost_usd column, so OR REPLACE would fail to shrink back on rerun.
 DROP VIEW IF EXISTS claude.v_session_token_summary CASCADE;
 CREATE VIEW claude.v_session_token_summary AS
@@ -71,7 +71,7 @@ GROUP BY s.session_id, p.dir_name, p.project_path, s.ai_title, s.models,
          s.duration_seconds;
 
 -- Per-project rollup.
--- DROP + CREATE: see v_transcript_token_summary above -- 010_model_pricing.sql
+-- DROP + CREATE: see v_transcript_token_summary above -- 008_model_pricing.sql
 -- adds a cost_usd column, so OR REPLACE would fail to shrink back on rerun.
 DROP VIEW IF EXISTS claude.v_project_token_summary CASCADE;
 CREATE VIEW claude.v_project_token_summary AS
