@@ -231,6 +231,19 @@ transcripts.
 | `parquet_exports` | one `pg_parquet` export |
 | `migrations` | which `sql/*.sql` was applied, and when |
 
+**`/stats` vs. deduplicated tokens** — a single API call can log multiple JSONL
+records under one `requestId` (one per assistant content block); `input_tokens`,
+`cache_creation_input_tokens` and `cache_read_input_tokens` are identical across
+that group, but `output_tokens` differs per record. `api_calls`' core columns
+dedupe the group (input/write/read taken once, `output_tokens = max(...)`) — the
+true per-call usage. Claude Code's own `/stats` (`dailyModelTokens` in
+`~/.claude/stats-cache.json`) doesn't dedupe: it sums `output_tokens` across every
+record with no grouping. `usage_records` (group size), `output_tokens_raw`
+(`sum(output)`), and the generated `duplicated_total_tokens` column
+(`usage_records * (input + write + read) + output_tokens_raw`) reproduce that
+inflated `/stats` arithmetic purely for comparison — they don't change the
+deduplicated truth in the other columns.
+
 **Views** — `v_transcript_token_summary`, `v_session_token_summary`,
 `v_project_token_summary`, `v_daily_token_usage`, `v_subagent_share`,
 `v_call_cache_efficiency` (per-call cache % and context growth),
