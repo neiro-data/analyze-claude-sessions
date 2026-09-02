@@ -4,7 +4,7 @@
 --
 -- Idempotent (CREATE OR REPLACE) so `acp init-db` can replay it safely.
 -- Depends on 006_dashboard_views.sql (claude.v_call_detail) and
--- 008_session_lineage.sql (claude.v_session_lineage).
+-- 010_session_lineage.sql (claude.v_session_lineage).
 
 -- ---------------------------------------------------------------------------
 -- One row per family member, numbered in the order the sessions actually ran.
