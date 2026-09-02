@@ -1,4 +1,4 @@
-# analyze-claude-projects
+# analyze-claude-sessions
 
 
 ## Resume
@@ -19,7 +19,7 @@ ingestion CLI, and a schema built over the per-API-call token and timing reports
 - **Everything runs in containers.** The host only needs Docker and `make`. `uv` is needed
   only for local dev commands (`make check`).
 
-## Agent read 
+## Agent read
 If you are an AI agent, read also [README_AGENT.md](README_AGENT.md).
 
 ## Quick start
