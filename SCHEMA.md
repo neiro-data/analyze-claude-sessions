@@ -50,6 +50,7 @@ transcripts.
 | `sessions` | one Claude Code session, rolled up from its transcripts; `parent_session_id` is the claimed origin session (unvalidated, no FK) |
 | `transcripts` | one `.jsonl` file (`kind` = `session` \| `subagent`), with size, sha256, time window, models, CLI versions, git branches, per-type record counts |
 | `transcript_record_types` | `(transcript_id, type, subtype)` histogram |
+| `model_pricing` | one `(model, effective_from)` price point; append-only, loaded from `data/reference/model_pricing.csv` via `acp pricing sync-db` |
 
 **Audit**
 
@@ -80,7 +81,26 @@ deduplicated truth in the other columns.
 `v_call_cache_efficiency` (per-call cache % and context growth),
 `v_long_gaps` (gaps ≥ 5 min), `v_ingest_status`, `v_session_lineage` (per-session
 parent/child role, resolved root and depth, cycle-safe), `v_session_family` (per-root chain
-rollup: length, models, total calls/tokens, first→last span).
+rollup: length, models, total calls/tokens, first→last span), `v_api_call_cost` (per-call
+list-price estimate, deduplicated tokens), `v_api_call_cost_duplicated` (same estimate priced
+against the `/stats`-style inflated arithmetic above).
+
+### Model pricing (CSV source of truth)
+
+`data/reference/model_pricing.csv` is the human-auditable price list — Claude API list prices
+scraped from `platform.claude.com/docs/en/about-claude/pricing`, one row per
+`(model, ingested_date)`, append-only (a rate change is a new row, never an edit).
+`data/reference/model_id_map.csv` maps DB snapshot ids (e.g.
+`claude-haiku-4-5-20251001`) to their base CSV model id.
+
+- `acp pricing refresh --input <snapshot.md>` diffs a fetched pricing-page snapshot against
+  the CSV and appends only the rows whose price actually changed.
+- `acp pricing sync-db` loads the CSV's latest-per-model prices into `claude.model_pricing`,
+  append-only (`INSERT ... ON CONFLICT DO NOTHING`, never an `UPDATE`).
+- `v_api_call_cost` / `v_api_call_cost_duplicated` and the three summary views pick the
+  newest `model_pricing` row with `effective_from <= called_at::date` — a call before any
+  priced row, or for an unpriced model, costs `NULL`, never `0`.
+- These are **list-price estimates**, not a Claude Pro bill.
 
 ## `pg_parquet`
 

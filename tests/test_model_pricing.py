@@ -87,6 +87,75 @@ def test_session_cost_matches_hand_computed_total(conn: Connection[Any]) -> None
     assert hand_total == pytest.approx(float(session["cost_usd"]), rel=1e-9)
 
 
+def test_pricing_sync_db_is_append_only_and_idempotent(conn: Connection[Any]) -> None:
+    """`sync_db` never UPDATEs a priced row; re-running it twice is a no-op."""
+    from analyze_claude_projects.config import REPO_ROOT
+    from analyze_claude_projects.pricing_refresh import sync_db
+
+    csv_path = REPO_ROOT / "data" / "reference" / "model_pricing.csv"
+    alias_path = REPO_ROOT / "data" / "reference" / "model_id_map.csv"
+
+    before = conn.execute("SELECT count(*) AS n FROM claude.model_pricing").fetchone()
+    sync_db(conn, csv_path, alias_path)
+    after_first = conn.execute("SELECT count(*) AS n FROM claude.model_pricing").fetchone()
+    assert after_first is not None and before is not None
+    assert after_first["n"] >= before["n"]
+
+    result = sync_db(conn, csv_path, alias_path)
+    after_second = conn.execute("SELECT count(*) AS n FROM claude.model_pricing").fetchone()
+    assert after_second is not None
+    assert after_second["n"] == after_first["n"]
+    assert result.inserted == ()
+
+
+def test_pricing_sync_db_skips_duplicate_seed_prices(conn: Connection[Any]) -> None:
+    """The 4 seeded 2026-01-01 rows must not get a duplicate identical-price row."""
+    from analyze_claude_projects.config import REPO_ROOT
+    from analyze_claude_projects.pricing_refresh import sync_db
+
+    csv_path = REPO_ROOT / "data" / "reference" / "model_pricing.csv"
+    alias_path = REPO_ROOT / "data" / "reference" / "model_id_map.csv"
+    sync_db(conn, csv_path, alias_path)
+
+    for model in ("claude-sonnet-5", "claude-opus-5", "claude-opus-4-8"):
+        rows = conn.execute(
+            "SELECT effective_from FROM claude.model_pricing WHERE model = %s", (model,)
+        ).fetchall()
+        # The CSV's price matches the 2026-01-01 seed row exactly, so sync-db must
+        # not have appended a duplicate 2026-09-03 row on top of it.
+        assert len(rows) == 1, f"{model} got a duplicate-price row: {rows}"
+
+
+def test_price_change_costs_older_calls_at_the_older_rate(conn: Connection[Any]) -> None:
+    """A call before a rate change is priced at the old rate (two-row price history)."""
+    conn.execute(
+        """
+        INSERT INTO claude.model_pricing
+            (model, effective_from, input_usd_per_mtok, output_usd_per_mtok,
+             cache_write_usd_per_mtok, cache_read_usd_per_mtok, source)
+        VALUES
+            ('__test_history_model__', '2020-01-01', 1.00, 1.00, 1.00, 1.00, 'test'),
+            ('__test_history_model__', '2030-01-01', 2.00, 2.00, 2.00, 2.00, 'test')
+        ON CONFLICT (model, effective_from) DO NOTHING
+        """
+    )
+    row = conn.execute(
+        """
+        SELECT
+            (100 * 1.00 / 1e6)::numeric(12,6) AS expected_old_input_cost,
+            mp.input_usd_per_mtok
+        FROM claude.model_pricing mp
+        WHERE mp.model = '__test_history_model__'
+          AND mp.effective_from <= '2025-06-01'::date
+        ORDER BY mp.effective_from DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    assert row is not None
+    assert row["input_usd_per_mtok"] == 1.00  # picks the pre-change rate, not the 2030 one
+    conn.execute("DELETE FROM claude.model_pricing WHERE model = '__test_history_model__'")
+
+
 def test_cost_view_column_order_is_backward_compatible(conn: Connection[Any]) -> None:
     """cost_usd must be appended, not inserted -- CREATE OR REPLACE VIEW requires it."""
     cols = conn.execute(

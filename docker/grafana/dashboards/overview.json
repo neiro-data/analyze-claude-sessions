@@ -210,11 +210,49 @@
       ]
     },
     {
+      "id": 16,
+      "title": "Est. API cost (tracked tokens)",
+      "type": "stat",
+      "description": "List-price estimate of what these calls would have cost on the API (claude.v_api_call_cost, deduplicated tokens). Not a Claude Pro bill. Calls for an unpriced model are excluded from this sum, not costed at 0.",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 12 },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT coalesce(sum(cost_usd),0) AS est_cost_usd FROM claude.v_api_call_cost c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Est. API cost (/stats arithmetic)",
+      "type": "stat",
+      "description": "List-price estimate using Claude Code's own /stats non-deduplicated arithmetic (claude.v_api_call_cost_duplicated). Expected to exceed \"Est. API cost (tracked tokens)\" -- that is correct, not a bug. Not a Claude Pro bill; calls for an unpriced model are excluded, not costed at 0.",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 12 },
+      "fieldConfig": {
+        "defaults": { "unit": "currencyUSD", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT coalesce(sum(cost_usd),0) AS est_cost_usd_duplicated FROM claude.v_api_call_cost_duplicated c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+        }
+      ]
+    },
+    {
       "id": 5,
       "title": "Tokens over time",
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 12 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 16 },
       "fieldConfig": {
         "defaults": { "unit": "short" },
         "overrides": [
@@ -244,7 +282,7 @@
       "title": "API calls over time",
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 21 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 25 },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
         {
@@ -259,7 +297,7 @@
       "title": "Cache efficiency",
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 30 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 34 },
       "options": {
         "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
         "tooltip": { "mode": "multi", "sort": "none" }
@@ -329,7 +367,7 @@
       "title": "Session explorer",
       "type": "table",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 39 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 43 },
       "targets": [
         {
           "refId": "A",

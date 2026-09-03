@@ -52,7 +52,7 @@ use. Its port is bound to `127.0.0.1` — do not expose it beyond localhost.
 
 | Dashboard | Shows |
 | --- | --- |
-| **Usage overview** | Token/call/duration totals, time series, a session explorer, and a cache-efficiency panel. |
+| **Usage overview** | Token/call/duration totals, two estimated-API-cost panels, time series, a session explorer, and a cache-efficiency panel. |
 | **Session detail** | One session broken down per API call: tokens, cache-read %, context growth, time between calls. |
 | **Session lineage** | Parent/child spawn chains, resolved from an `Origin session_id:` marker left by subagent handoffs. |
 | **Multi-agent group sessions** | One whole spawn chain, rendered as a merged session with a shared timeline. |

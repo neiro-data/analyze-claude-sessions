@@ -168,6 +168,22 @@ stops both.
 
 See [README.md — Dashboard](README.md#dashboard) for what each dashboard shows.
 
+## Model pricing
+
+`data/reference/model_pricing.csv` is the source of truth for Claude API list prices (see
+[SCHEMA.md — Model pricing](SCHEMA.md#model-pricing-csv-source-of-truth)).
+
+```bash
+make pricing-refresh ARGS='--input data/reference/snapshots/pricing_<date>.md'
+                    # diffs a fetched pricing-page snapshot into the CSV; add --dry-run to preview
+make pricing-sync-db # loads the CSV into claude.model_pricing (append-only, idempotent)
+```
+
+To refresh: fetch `https://platform.claude.com/docs/en/about-claude/pricing` (an agent tool
+like WebFetch, or a manual copy-paste), save the "Model pricing" table as markdown to
+`data/reference/snapshots/pricing_<date>.md`, then run `make pricing-refresh`. Nothing is
+written to the CSV unless a price actually changed.
+
 ## Development
 
 ```bash
