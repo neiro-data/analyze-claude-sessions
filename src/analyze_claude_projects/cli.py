@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+from pathlib import Path
 from typing import Annotated, Any
 
 import psycopg
@@ -10,17 +12,22 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
-from .config import get_settings
+from .config import REPO_ROOT, get_settings
 from .db import apply_migrations, connect, fetch_all, finish_run, start_run
 from .discovery import discover_transcripts
 from .parquet_export import DEFAULT_RELATIONS, ensure_extension, export_relation
 from .pipeline import ingest_transcripts
+from .pricing_refresh import DEFAULT_SOURCE_URL, refresh, sync_db
 
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
     help="Analyse Claude Code transcripts in PostgreSQL.",
 )
+pricing_app = typer.Typer(
+    add_completion=False, no_args_is_help=True, help="CSV-sourced model pricing."
+)
+app.add_typer(pricing_app, name="pricing")
 console = Console()
 
 ProjectOption = Annotated[
@@ -395,3 +402,57 @@ def ask(
         # database error surfaces as a friendly message, not a raw traceback.
         console.print(f"[red]Query failed:[/red] {exc}")
         raise typer.Exit(code=1) from exc
+
+
+DEFAULT_PRICING_CSV = REPO_ROOT / "data" / "reference" / "model_pricing.csv"
+DEFAULT_ALIAS_MAP = REPO_ROOT / "data" / "reference" / "model_id_map.csv"
+
+
+@pricing_app.command("refresh")
+def pricing_refresh_cmd(
+    input_path: Annotated[
+        Path, typer.Option("--input", exists=True, help="Snapshot file to parse.")
+    ],
+    as_of: Annotated[
+        str | None,
+        typer.Option("--as-of", help="ISO date to stamp new rows with (default: today)."),
+    ] = None,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Print the diff, write nothing.")
+    ] = False,
+) -> None:
+    """Diff a fetched pricing snapshot against data/reference/model_pricing.csv."""
+    as_of_date = date.fromisoformat(as_of) if as_of else None
+    result = refresh(DEFAULT_PRICING_CSV, input_path=input_path, as_of=as_of_date, dry_run=dry_run)
+    s = result.summary
+    console.print(f"{s.unchanged} unchanged, {s.changed} changed, {s.new} new")
+    if s.delisted:
+        console.print(
+            f"[yellow]Delisted (kept in CSV, no longer on the page):[/yellow] "
+            f"{', '.join(s.delisted)}"
+        )
+    if dry_run:
+        console.print("[dim]--dry-run: nothing written[/dim]")
+    elif result.wrote:
+        console.print(f"[green]Wrote[/green] {DEFAULT_PRICING_CSV}")
+
+
+@pricing_app.command("sync-db")
+def pricing_sync_db_cmd() -> None:
+    """Load data/reference/model_pricing.csv into claude.model_pricing (append-only)."""
+    settings = get_settings()
+    with connect(settings.database_url) as conn:
+        result = sync_db(
+            conn, DEFAULT_PRICING_CSV, DEFAULT_ALIAS_MAP, source_url=DEFAULT_SOURCE_URL
+        )
+    if result.inserted:
+        names = ", ".join(result.inserted)
+        console.print(f"[green]Inserted[/green] {len(result.inserted)}: {names}")
+    else:
+        console.print("[dim]No new rows to insert[/dim]")
+    console.print(f"{len(result.skipped_unchanged)} unchanged, skipped")
+    if result.unmatched_db_models:
+        console.print(
+            f"[yellow]Warning:[/yellow] DB models with no CSV price: "
+            f"{', '.join(result.unmatched_db_models)}"
+        )

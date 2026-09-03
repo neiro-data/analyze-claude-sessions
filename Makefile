@@ -9,6 +9,7 @@ export CLAUDE_PROJECTS_DIR ?= $(HOME)/.claude/projects
 
 .PHONY: help env build build-db up down destroy logs ps psql \
         init-db discover ingest export-parquet stats shell \
+        pricing-refresh pricing-sync-db \
         up-grafana dashboard \
         venv lint fmt typecheck test check rag-stress \
         install-timer uninstall-timer
@@ -66,6 +67,12 @@ stats: ## Print headline usage numbers
 
 shell: ## Bash prompt inside the app container
 	$(COMPOSE) run --rm --entrypoint bash app
+
+pricing-refresh: ## Diff a pricing snapshot into data/reference/model_pricing.csv (ARGS='--input path/to/snapshot.md')
+	uv run acp pricing refresh $(ARGS)
+
+pricing-sync-db: up ## Load data/reference/model_pricing.csv into claude.model_pricing (append-only)
+	$(RUN) pricing sync-db
 
 # --- dashboard ---------------------------------------------------------------
 up-grafana: env ## Start PostgreSQL + Grafana, waits for PostgreSQL to be healthy

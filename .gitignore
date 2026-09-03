@@ -23,6 +23,8 @@ data/nlp_cache/
 
 .DS_Store
 
+.symbol-index/
+
 claude_interaction_steps.md
 *[Hh][Aa][Nn][Dd][Oo][Ff][Ff]*.md
 plan-*.md
