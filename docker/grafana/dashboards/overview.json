@@ -2,7 +2,7 @@
   "uid": "acp-overview",
   "title": "Claude Usage Overview",
   "schemaVersion": 39,
-  "version": 6,
+  "version": 7,
   "editable": false,
   "timezone": "utc",
   "time": {
@@ -414,7 +414,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(cost_usd),0) AS est_cost_usd FROM claude.v_api_call_cost c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
+          "rawSql": "SELECT coalesce(sum(cost_usd),0) AS est_cost_usd FROM claude.v_api_call_cost c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls a WHERE a.call_id = c.call_id AND coalesce(nullif(a.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ',')))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -448,7 +448,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(cost_usd),0) AS est_cost_usd_duplicated FROM claude.v_api_call_cost_duplicated c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
+          "rawSql": "SELECT coalesce(sum(cost_usd),0) AS est_cost_usd_duplicated FROM claude.v_api_call_cost_duplicated c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls a WHERE a.call_id = c.call_id AND coalesce(nullif(a.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ',')))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
