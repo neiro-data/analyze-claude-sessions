@@ -1,6 +1,6 @@
 [project]
 name = "analyze-claude-projects"
-version = "0.2.0"
+version = "0.3.0"
 description = "Ingest Claude Code session transcripts into PostgreSQL (+pg_parquet) and analyse per-call token/cache behaviour."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

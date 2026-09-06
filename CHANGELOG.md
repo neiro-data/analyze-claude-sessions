@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.2.0...v0.3.0) (2026-09-06)
+
+
+### Features
+
+* context-window and pacing metrics for Grafana dashboards ([4fae4a5](https://github.com/neiro-data/analyze-claude-sessions/commit/4fae4a5d788ac16dae8fd8c33fe692d45a86d0d3))
+
 ## [0.2.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.1.0...v0.2.0) (2026-09-06)
 
 
