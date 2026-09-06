@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.3.1...v0.4.0) (2026-09-06)
+
+
+### Features
+
+* **dashboard:** add Agent and Small sessions filters to Usage overview ([075afd1](https://github.com/neiro-data/analyze-claude-sessions/commit/075afd1a45a522127d55ad283bcd58227261b9fe))
+* **dashboard:** add Agent and Small sessions filters to Usage overview ([6119882](https://github.com/neiro-data/analyze-claude-sessions/commit/61198823682dd69aa0fa4e13e2e3b7c78f05e2e2))
+
+
+### Bug Fixes
+
+* **dashboard:** agent predicate on cost panels referenced nonexistent column ([eb5ee2b](https://github.com/neiro-data/analyze-claude-sessions/commit/eb5ee2bff59dde074b2aefce1a4a1ff56292a19e))
+* **dashboard:** drop duplicate api_calls_right axis, add small-sessions tooltip ([8f2fd87](https://github.com/neiro-data/analyze-claude-sessions/commit/8f2fd872f6be1f4f44f1ed0c8182f950a69a5f19))
+
 ## [0.3.1](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.3.0...v0.3.1) (2026-09-06)
 
 
