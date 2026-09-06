@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.3.0...v0.3.1) (2026-09-06)
+
+
+### Bug Fixes
+
+* pin release-please PR title pattern with explicit version ([f3b528a](https://github.com/neiro-data/analyze-claude-sessions/commit/f3b528a1e3108d23c73dfc55307f3fec8b59efad))
+* pin release-please PR title pattern with explicit version ([70e6265](https://github.com/neiro-data/analyze-claude-sessions/commit/70e6265173e047802833a43b5cd5010852872ff4))
+
 ## [0.3.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.2.0...v0.3.0) (2026-09-06)
 
 
