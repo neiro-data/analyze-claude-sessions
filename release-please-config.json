@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "python",
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": false,
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "separate-pull-requests": false,
+  "packages": {
+    ".": {
+      "package-name": "analyze-claude-projects",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "src/analyze_claude_projects/__init__.py"
+      ]
+    }
+  }
+}

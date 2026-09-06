@@ -85,6 +85,14 @@ the full explanation.
 Full table/view reference, the ingestion pipeline diagram, and the last verified run are in
 **[SCHEMA.md](SCHEMA.md)**.
 
+## Versioning
+
+Versioning is automated by [release-please](https://github.com/googleapis/release-please) from
+Conventional Commits: `feat:` bumps minor, `fix:` bumps patch, `BREAKING CHANGE:` bumps minor
+while the project is below `1.0.0`. Merging the open `chore(main): release X.Y.Z` PR is what cuts
+the release — it creates the `vX.Y.Z` tag, `CHANGELOG.md` entry, and GitHub Release. Docs-only
+pushes to `main` do not trigger it.
+
 ## Layout
 
 ```
