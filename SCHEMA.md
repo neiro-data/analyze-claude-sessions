@@ -86,7 +86,9 @@ list-price estimate, deduplicated tokens), `v_api_call_cost_duplicated` (same es
 against the `/stats`-style inflated arithmetic above), `v_call_context_growth` (per-call billed
 context window, per-transcript growth, and cross-transcript session gap),
 `v_session_context_metrics` (session rollup of the above: `avg/max_context_window_tokens`,
-`avg/max_context_growth`, `avg/max_time_api_calls`).
+`avg/max_context_growth`, `avg/max_time_api_calls`), `v_session_size_flags` (per-session
+`is_small` flag: duration < 30s or fewer than 5 API calls, backing the Usage overview
+dashboard's `Small sessions` filter).
 
 ### Model pricing (CSV source of truth)
 
