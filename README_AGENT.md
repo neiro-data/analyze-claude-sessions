@@ -3,6 +3,12 @@
 Referenced from [README.md](README.md). Background for an AI agent working in this repo —
 implementation history that a human user does not need for day-to-day use.
 
+## Versioning
+
+`pyproject.toml`'s version and `src/analyze_claude_projects/__init__.py:__version__` are managed by
+release-please (see README.md#versioning). Never hand-edit either — release-please rewrites both in
+its release PR, keyed off the `# x-release-please-version` annotation comment in `__init__.py`.
+
 ## Changes to the vendored report script
 
 `scripts/cache_report_per_call_timing.sh` is a copy of `REPOS/scripts/…` with three fixes.
