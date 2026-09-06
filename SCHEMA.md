@@ -83,7 +83,10 @@ deduplicated truth in the other columns.
 parent/child role, resolved root and depth, cycle-safe), `v_session_family` (per-root chain
 rollup: length, models, total calls/tokens, first→last span), `v_api_call_cost` (per-call
 list-price estimate, deduplicated tokens), `v_api_call_cost_duplicated` (same estimate priced
-against the `/stats`-style inflated arithmetic above).
+against the `/stats`-style inflated arithmetic above), `v_call_context_growth` (per-call billed
+context window, per-transcript growth, and cross-transcript session gap),
+`v_session_context_metrics` (session rollup of the above: `avg/max_context_window_tokens`,
+`avg/max_context_growth`, `avg/max_time_api_calls`).
 
 ### Model pricing (CSV source of truth)
 
