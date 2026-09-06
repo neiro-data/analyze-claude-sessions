@@ -52,12 +52,15 @@ use. Its port is bound to `127.0.0.1` — do not expose it beyond localhost.
 
 | Dashboard | Shows |
 | --- | --- |
-| **Usage overview** | Token/call/duration totals, two estimated-API-cost panels, time series, a session explorer, and a cache-efficiency panel. |
+| **Usage overview** | Token/call/duration totals, two estimated-API-cost panels, time series, a session explorer, a cache-efficiency panel, and per-agent tokens and context-window panels. |
 | **Session detail** | One session broken down per API call: tokens, cache-read %, context growth, time between calls. |
 | **Session lineage** | Parent/child spawn chains, resolved from an `Origin session_id:` marker left by subagent handoffs. |
 | **Multi-agent group sessions** | One whole spawn chain, rendered as a merged session with a shared timeline. |
 
 All four dashboards share a `Model` filter (default: all models combined) and render in UTC.
+**Usage overview** additionally has `Agent` (filters by `agent_type`, `main` included alongside
+sub-agent types) and `Small sessions` filters; `Small sessions = off` (default) hides sessions
+shorter than 30 seconds or with fewer than 5 API calls.
 Full panel-by-panel detail — color scales, filter semantics, backing views — lives in
 [scripts-guide.md — Grafana dashboards](scripts-guide.md#grafana-dashboards).
 

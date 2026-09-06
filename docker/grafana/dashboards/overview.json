@@ -2,24 +2,64 @@
   "uid": "acp-overview",
   "title": "Claude Usage Overview",
   "schemaVersion": 39,
-  "version": 5,
+  "version": 6,
   "editable": false,
   "timezone": "utc",
-  "time": { "from": "now-30d", "to": "now" },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
   "templating": {
     "list": [
       {
         "name": "model",
         "label": "Model",
         "type": "query",
-        "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+        "datasource": {
+          "type": "postgres",
+          "uid": "claude-analytics-pg"
+        },
         "query": "SELECT DISTINCT model AS __text, model AS __value FROM claude.api_calls WHERE model IS NOT NULL ORDER BY model",
         "refresh": 2,
         "sort": 1,
         "multi": true,
         "includeAll": true,
         "allValue": "",
-        "current": { "text": "All", "value": "$__all" }
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "agent",
+        "label": "Agent",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "claude-analytics-pg"
+        },
+        "query": "SELECT DISTINCT coalesce(nullif(agent_type,''),'unknown') AS __text, coalesce(nullif(agent_type,''),'unknown') AS __value FROM claude.api_calls ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": "",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "small_sessions",
+        "label": "Small sessions",
+        "type": "custom",
+        "query": "off,on",
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "text": "off",
+          "value": "off"
+        }
       }
     ]
   },
@@ -28,17 +68,31 @@
       "id": 1,
       "title": "Total tokens",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(c.total_input_tokens),0) + coalesce(sum(c.output_tokens),0) AS total_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+          "rawSql": "SELECT coalesce(sum(c.total_input_tokens),0) + coalesce(sum(c.output_tokens),0) AS total_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -47,17 +101,31 @@
       "title": "Duplicated tokens (/stats)",
       "type": "stat",
       "description": "Mirrors Claude Code's own /stats non-deduplicated arithmetic (dailyModelTokens in ~/.claude/stats-cache.json); expected to exceed \"Total tokens\", which is the deduplicated truth.",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(c.duplicated_total_tokens),0) AS duplicated_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+          "rawSql": "SELECT coalesce(sum(c.duplicated_total_tokens),0) AS duplicated_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -65,17 +133,31 @@
       "id": 15,
       "title": "Cache-write tokens",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(c.cache_write_tokens),0) AS cache_write_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+          "rawSql": "SELECT coalesce(sum(c.cache_write_tokens),0) AS cache_write_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -83,17 +165,30 @@
       "id": 2,
       "title": "Total sessions",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 4 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 4
+      },
       "fieldConfig": {
-        "defaults": { "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(DISTINCT c.session_id) AS total_sessions FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+          "rawSql": "SELECT count(DISTINCT c.session_id) AS total_sessions FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -101,17 +196,31 @@
       "id": 3,
       "title": "Total API calls",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 4 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 4
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT count(*) AS total_api_calls FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+          "rawSql": "SELECT count(*) AS total_api_calls FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -119,18 +228,37 @@
       "id": 4,
       "title": "Cache-read %",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 4 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 4
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 60 },
-              { "color": "green", "value": 90 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 60
+              },
+              {
+                "color": "green",
+                "value": 90
+              }
             ]
           }
         },
@@ -140,7 +268,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT round(sum(c.cache_read_tokens)::numeric / NULLIF(sum(c.total_input_tokens),0) * 100, 2) AS cache_read_pct FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+          "rawSql": "SELECT round(sum(c.cache_read_tokens)::numeric / NULLIF(sum(c.total_input_tokens),0) * 100, 2) AS cache_read_pct FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -148,17 +276,31 @@
       "id": 9,
       "title": "Total duration",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 8 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(s.duration_seconds),0) AS total_duration_seconds FROM claude.v_session_token_summary s WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ','))))"
+          "rawSql": "SELECT coalesce(sum(s.duration_seconds),0) AS total_duration_seconds FROM claude.v_session_token_summary s WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) AND ('${agent:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ',')))) AND ('$small_sessions' = 'on' OR EXISTS (SELECT 1 FROM claude.v_session_size_flags f WHERE f.session_id = s.session_id AND NOT f.is_small))"
         }
       ]
     },
@@ -166,17 +308,31 @@
       "id": 10,
       "title": "Average session duration",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 8 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 8
+      },
       "fieldConfig": {
-        "defaults": { "unit": "s", "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT round(avg(s.duration_seconds), 1) AS avg_duration_seconds FROM claude.v_session_token_summary s WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ','))))"
+          "rawSql": "SELECT round(avg(s.duration_seconds), 1) AS avg_duration_seconds FROM claude.v_session_token_summary s WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) AND ('${agent:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ',')))) AND ('$small_sessions' = 'on' OR EXISTS (SELECT 1 FROM claude.v_session_size_flags f WHERE f.session_id = s.session_id AND NOT f.is_small))"
         }
       ]
     },
@@ -184,18 +340,37 @@
       "id": 13,
       "title": "Average API call duration",
       "type": "stat",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 8 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 8
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 300 },
-              { "color": "red", "value": 3600 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 3600
+              }
             ]
           }
         },
@@ -205,7 +380,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT round(avg(c.delta_seconds), 1) AS avg_call_duration_seconds FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND c.call_index > 1 AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+          "rawSql": "SELECT round(avg(c.delta_seconds), 1) AS avg_call_duration_seconds FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND c.call_index > 1 AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -214,17 +389,32 @@
       "title": "Est. API cost (tracked tokens)",
       "type": "stat",
       "description": "List-price estimate of what these calls would have cost on the API (claude.v_api_call_cost, deduplicated tokens). Not a Claude Pro bill. Calls for an unpriced model are excluded from this sum, not costed at 0.",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 12 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 12
+      },
       "fieldConfig": {
-        "defaults": { "unit": "currencyUSD", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(cost_usd),0) AS est_cost_usd FROM claude.v_api_call_cost c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+          "rawSql": "SELECT coalesce(sum(cost_usd),0) AS est_cost_usd FROM claude.v_api_call_cost c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -233,17 +423,32 @@
       "title": "Est. API cost (/stats arithmetic)",
       "type": "stat",
       "description": "List-price estimate using Claude Code's own /stats non-deduplicated arithmetic (claude.v_api_call_cost_duplicated). Expected to exceed \"Est. API cost (tracked tokens)\" -- that is correct, not a bug. Not a Claude Pro bill; calls for an unpriced model are excluded, not costed at 0.",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 12 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 12
+      },
       "fieldConfig": {
-        "defaults": { "unit": "currencyUSD", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "text" } },
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
         "overrides": []
       },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT coalesce(sum(cost_usd),0) AS est_cost_usd_duplicated FROM claude.v_api_call_cost_duplicated c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+          "rawSql": "SELECT coalesce(sum(cost_usd),0) AS est_cost_usd_duplicated FROM claude.v_api_call_cost_duplicated c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -252,20 +457,42 @@
       "title": "Avg context window (per API call)",
       "type": "stat",
       "description": "Average billed context window per API call: avg(total_input_tokens), i.e. input + cache-read + cache-write, which is exactly the prompt size sent to the model. Per-call grain (not per-session peak) so it matches the other stats on this row and honours the model filter directly.",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 12 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 12
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
           "decimals": 0,
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 100000 },
-              { "color": "orange", "value": 150000 },
-              { "color": "red", "value": 180000 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100000
+              },
+              {
+                "color": "orange",
+                "value": 150000
+              },
+              {
+                "color": "red",
+                "value": 180000
+              }
             ]
           }
         },
@@ -275,7 +502,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT round(avg(c.total_input_tokens), 0) AS avg_context_window_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+          "rawSql": "SELECT round(avg(c.total_input_tokens), 0) AS avg_context_window_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small))"
         }
       ]
     },
@@ -283,24 +510,58 @@
       "id": 5,
       "title": "Tokens over time",
       "type": "timeseries",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 16 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "axisWidth": 80 } },
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "axisWidth": 80
+          }
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "output_tokens" },
+            "matcher": {
+              "id": "byName",
+              "options": "output_tokens"
+            },
             "properties": [
-              { "id": "custom.axisPlacement", "value": "right" },
-              { "id": "custom.axisLabel", "value": "output tokens" },
-              { "id": "custom.axisWidth", "value": 60 }
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "output tokens"
+              },
+              {
+                "id": "custom.axisWidth",
+                "value": 60
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "total_input_tokens" },
+            "matcher": {
+              "id": "byName",
+              "options": "total_input_tokens"
+            },
             "properties": [
-              { "id": "custom.axisLabel", "value": "input tokens" },
-              { "id": "custom.axisWidth", "value": 80 }
+              {
+                "id": "custom.axisLabel",
+                "value": "input tokens"
+              },
+              {
+                "id": "custom.axisWidth",
+                "value": 80
+              }
             ]
           }
         ]
@@ -309,7 +570,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT gs AS time, coalesce(sum(c.total_input_tokens),0) AS total_input_tokens, coalesce(sum(c.output_tokens),0) AS output_tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs ORDER BY gs"
+          "rawSql": "SELECT gs AS time, coalesce(sum(c.total_input_tokens),0) AS total_input_tokens, coalesce(sum(c.output_tokens),0) AS output_tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small)) GROUP BY gs ORDER BY gs"
         }
       ]
     },
@@ -317,21 +578,62 @@
       "id": 8,
       "title": "API calls over time",
       "type": "timeseries",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 25 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "axisWidth": 80 } },
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "axisWidth": 80
+          }
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "api_calls_right" },
+            "matcher": {
+              "id": "byName",
+              "options": "api_calls_right"
+            },
             "properties": [
-              { "id": "custom.axisPlacement", "value": "right" },
-              { "id": "custom.axisWidth", "value": 60 },
-              { "id": "custom.axisLabel", "value": "" },
-              { "id": "custom.lineWidth", "value": 0 },
-              { "id": "custom.fillOpacity", "value": 0 },
-              { "id": "custom.pointSize", "value": 0 },
-              { "id": "custom.hideFrom", "value": { "tooltip": true, "legend": true, "viz": false } }
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisWidth",
+                "value": 60
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": ""
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 0
+              },
+              {
+                "id": "custom.hideFrom",
+                "value": {
+                  "tooltip": true,
+                  "legend": true,
+                  "viz": false
+                }
+              }
             ]
           }
         ]
@@ -340,7 +642,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT gs AS time, count(c.*) AS api_calls, count(c.*) AS api_calls_right FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs ORDER BY gs"
+          "rawSql": "SELECT gs AS time, count(c.*) AS api_calls, count(c.*) AS api_calls_right FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small)) GROUP BY gs ORDER BY gs"
         }
       ]
     },
@@ -348,11 +650,26 @@
       "id": 6,
       "title": "Cache efficiency",
       "type": "timeseries",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 34 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "tooltip": { "mode": "multi", "sort": "none" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
       },
       "fieldConfig": {
         "defaults": {
@@ -360,51 +677,162 @@
             "drawStyle": "line",
             "lineWidth": 2,
             "fillOpacity": 0,
-            "stacking": { "mode": "none", "group": "A" }
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
           }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "cache_read_pct" },
+            "matcher": {
+              "id": "byName",
+              "options": "cache_read_pct"
+            },
             "properties": [
-              { "id": "unit", "value": "percent" },
-              { "id": "max", "value": 100 },
-              { "id": "min", "value": 0 },
-              { "id": "custom.axisPlacement", "value": "left" },
-              { "id": "custom.axisLabel", "value": "cache-read %" },
-              { "id": "custom.axisWidth", "value": 80 },
-              { "id": "custom.drawStyle", "value": "line" },
-              { "id": "custom.lineWidth", "value": 2 },
-              { "id": "custom.fillOpacity", "value": 0 },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "max",
+                "value": 100
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "left"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "cache-read %"
+              },
+              {
+                "id": "custom.axisWidth",
+                "value": 80
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "cache_write_tokens" },
+            "matcher": {
+              "id": "byName",
+              "options": "cache_write_tokens"
+            },
             "properties": [
-              { "id": "unit", "value": "short" },
-              { "id": "custom.axisPlacement", "value": "right" },
-              { "id": "custom.axisLabel", "value": "tokens" },
-              { "id": "custom.axisWidth", "value": 60 },
-              { "id": "custom.drawStyle", "value": "bars" },
-              { "id": "custom.fillOpacity", "value": 80 },
-              { "id": "custom.lineWidth", "value": 0 },
-              { "id": "custom.stacking", "value": { "mode": "normal", "group": "tokens" } },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "tokens"
+              },
+              {
+                "id": "custom.axisWidth",
+                "value": 60
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "bars"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 80
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "normal",
+                  "group": "tokens"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "cache_read_tokens" },
+            "matcher": {
+              "id": "byName",
+              "options": "cache_read_tokens"
+            },
             "properties": [
-              { "id": "unit", "value": "short" },
-              { "id": "custom.axisPlacement", "value": "right" },
-              { "id": "custom.axisLabel", "value": "tokens" },
-              { "id": "custom.axisWidth", "value": 60 },
-              { "id": "custom.drawStyle", "value": "bars" },
-              { "id": "custom.fillOpacity", "value": 80 },
-              { "id": "custom.lineWidth", "value": 0 },
-              { "id": "custom.stacking", "value": { "mode": "normal", "group": "tokens" } },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "tokens"
+              },
+              {
+                "id": "custom.axisWidth",
+                "value": 60
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "bars"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 80
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "normal",
+                  "group": "tokens"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
             ]
           }
         ]
@@ -413,7 +841,7 @@
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT gs AS time, round(coalesce(sum(c.cache_read_tokens),0)::numeric / NULLIF(sum(c.total_input_tokens),0) * 100, 2) AS cache_read_pct, coalesce(sum(c.cache_write_tokens),0) AS cache_write_tokens, coalesce(sum(c.cache_read_tokens),0) AS cache_read_tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs ORDER BY gs"
+          "rawSql": "SELECT gs AS time, round(coalesce(sum(c.cache_read_tokens),0)::numeric / NULLIF(sum(c.total_input_tokens),0) * 100, 2) AS cache_read_pct, coalesce(sum(c.cache_write_tokens),0) AS cache_write_tokens, coalesce(sum(c.cache_read_tokens),0) AS cache_read_tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small)) GROUP BY gs ORDER BY gs"
         }
       ]
     },
@@ -421,20 +849,31 @@
       "id": 7,
       "title": "Session explorer",
       "type": "table",
-      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 43 },
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 61
+      },
       "targets": [
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT s.session_id, s.ai_title, s.total_input_tokens, s.output_tokens, s.cache_read_pct, s.api_calls, s.duration_seconds, m.max_context_growth, m.max_time_api_calls FROM claude.v_session_token_summary s LEFT JOIN claude.v_session_context_metrics m USING (session_id) WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) ORDER BY s.first_event_at DESC"
+          "rawSql": "SELECT s.session_id, s.ai_title, s.total_input_tokens, s.output_tokens, s.cache_read_pct, s.api_calls, s.duration_seconds, m.max_context_growth, m.max_time_api_calls FROM claude.v_session_token_summary s LEFT JOIN claude.v_session_context_metrics m USING (session_id) WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) AND ('${agent:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ',')))) AND ('$small_sessions' = 'on' OR EXISTS (SELECT 1 FROM claude.v_session_size_flags f WHERE f.session_id = s.session_id AND NOT f.is_small)) ORDER BY s.first_event_at DESC"
         }
       ],
       "fieldConfig": {
         "defaults": {},
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "session_id" },
+            "matcher": {
+              "id": "byName",
+              "options": "session_id"
+            },
             "properties": [
               {
                 "id": "links",
@@ -449,44 +888,112 @@
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "max_context_growth" },
+            "matcher": {
+              "id": "byName",
+              "options": "max_context_growth"
+            },
             "properties": [
-              { "id": "unit", "value": "short" },
-              { "id": "decimals", "value": 0 },
-              { "id": "displayName", "value": "Max context growth" },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
-              { "id": "color", "value": { "mode": "thresholds" } },
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "displayName",
+                "value": "Max context growth"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
               {
                 "id": "thresholds",
                 "value": {
                   "mode": "absolute",
                   "steps": [
-                    { "color": "text", "value": null },
-                    { "color": "orange", "value": 20000 },
-                    { "color": "red", "value": 50000 }
+                    {
+                      "color": "text",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 20000
+                    },
+                    {
+                      "color": "red",
+                      "value": 50000
+                    }
                   ]
                 }
               }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "max_time_api_calls" },
+            "matcher": {
+              "id": "byName",
+              "options": "max_time_api_calls"
+            },
             "properties": [
-              { "id": "unit", "value": "s" },
-              { "id": "decimals", "value": 0 },
-              { "id": "displayName", "value": "Max gap between calls" },
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
-              { "id": "color", "value": { "mode": "thresholds" } },
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "displayName",
+                "value": "Max gap between calls"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
               {
                 "id": "thresholds",
                 "value": {
                   "mode": "absolute",
                   "steps": [
-                    { "color": "green", "value": null },
-                    { "color": "yellow", "value": 10 },
-                    { "color": "orange", "value": 30 },
-                    { "color": "red", "value": 300 },
-                    { "color": "dark-blue", "value": 3600 }
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 10
+                    },
+                    {
+                      "color": "orange",
+                      "value": 30
+                    },
+                    {
+                      "color": "red",
+                      "value": 300
+                    },
+                    {
+                      "color": "dark-blue",
+                      "value": 3600
+                    }
                   ]
                 }
               }
@@ -494,6 +1001,149 @@
           }
         ]
       }
+    },
+    {
+      "id": 20,
+      "title": "Tokens per agent",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "axisWidth": 80,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "total_tokens_right"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisWidth",
+                "value": 60
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "all agents"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT gs AS time, coalesce(nullif(c.agent_type,''),'unknown') AS metric, coalesce(sum(c.total_input_tokens + c.output_tokens),0) AS tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small)) GROUP BY 1, 2 ORDER BY 1, 2"
+        },
+        {
+          "refId": "B",
+          "format": "time_series",
+          "rawSql": "SELECT gs AS time, coalesce(sum(c.total_input_tokens + c.output_tokens),0) AS total_tokens_right FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small)) GROUP BY gs ORDER BY gs"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Avg context window per agent",
+      "type": "timeseries",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "axisWidth": 80,
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "api_calls_right"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisWidth",
+                "value": 60
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "api calls"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT gs AS time, coalesce(nullif(c.agent_type,''),'unknown') AS metric, round(avg(c.total_input_tokens),0) AS avg_context_tokens FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small)) GROUP BY 1, 2 ORDER BY 1, 2"
+        },
+        {
+          "refId": "B",
+          "format": "time_series",
+          "rawSql": "SELECT gs AS time, count(c.*) AS api_calls_right FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small)) GROUP BY gs ORDER BY gs"
+        }
+      ]
     }
   ]
 }
