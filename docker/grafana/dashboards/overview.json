@@ -286,18 +286,22 @@
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 16 },
       "fieldConfig": {
-        "defaults": { "unit": "short" },
+        "defaults": { "unit": "short", "custom": { "axisWidth": 80 } },
         "overrides": [
           {
             "matcher": { "id": "byName", "options": "output_tokens" },
             "properties": [
               { "id": "custom.axisPlacement", "value": "right" },
-              { "id": "custom.axisLabel", "value": "output tokens" }
+              { "id": "custom.axisLabel", "value": "output tokens" },
+              { "id": "custom.axisWidth", "value": 60 }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "total_input_tokens" },
-            "properties": [{ "id": "custom.axisLabel", "value": "input tokens" }]
+            "properties": [
+              { "id": "custom.axisLabel", "value": "input tokens" },
+              { "id": "custom.axisWidth", "value": 80 }
+            ]
           }
         ]
       },
@@ -315,12 +319,24 @@
       "type": "timeseries",
       "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 25 },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "axisWidth": 80 } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "_axis_spacer" },
+            "properties": [
+              { "id": "custom.axisPlacement", "value": "right" },
+              { "id": "custom.axisWidth", "value": 60 },
+              { "id": "custom.hideFrom", "value": { "tooltip": true, "viz": true, "legend": true } }
+            ]
+          }
+        ]
+      },
       "targets": [
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT gs AS time, count(c.*) AS api_calls FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs ORDER BY gs"
+          "rawSql": "SELECT gs AS time, count(c.*) AS api_calls, NULL::numeric AS _axis_spacer FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) GROUP BY gs ORDER BY gs"
         }
       ]
     },
@@ -352,6 +368,7 @@
               { "id": "min", "value": 0 },
               { "id": "custom.axisPlacement", "value": "left" },
               { "id": "custom.axisLabel", "value": "cache-read %" },
+              { "id": "custom.axisWidth", "value": 80 },
               { "id": "custom.drawStyle", "value": "line" },
               { "id": "custom.lineWidth", "value": 2 },
               { "id": "custom.fillOpacity", "value": 0 },
@@ -364,6 +381,7 @@
               { "id": "unit", "value": "short" },
               { "id": "custom.axisPlacement", "value": "right" },
               { "id": "custom.axisLabel", "value": "tokens" },
+              { "id": "custom.axisWidth", "value": 60 },
               { "id": "custom.drawStyle", "value": "bars" },
               { "id": "custom.fillOpacity", "value": 80 },
               { "id": "custom.lineWidth", "value": 0 },
@@ -377,6 +395,7 @@
               { "id": "unit", "value": "short" },
               { "id": "custom.axisPlacement", "value": "right" },
               { "id": "custom.axisLabel", "value": "tokens" },
+              { "id": "custom.axisWidth", "value": 60 },
               { "id": "custom.drawStyle", "value": "bars" },
               { "id": "custom.fillOpacity", "value": 80 },
               { "id": "custom.lineWidth", "value": 0 },
@@ -451,7 +470,22 @@
             "properties": [
               { "id": "unit", "value": "s" },
               { "id": "decimals", "value": 0 },
-              { "id": "displayName", "value": "Max gap between calls" }
+              { "id": "displayName", "value": "Max gap between calls" },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null },
+                    { "color": "yellow", "value": 10 },
+                    { "color": "orange", "value": 30 },
+                    { "color": "red", "value": 300 },
+                    { "color": "dark-blue", "value": 3600 }
+                  ]
+                }
+              }
             ]
           }
         ]
