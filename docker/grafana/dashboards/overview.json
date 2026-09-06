@@ -2,7 +2,7 @@
   "uid": "acp-overview",
   "title": "Claude Usage Overview",
   "schemaVersion": 39,
-  "version": 4,
+  "version": 5,
   "editable": false,
   "timezone": "utc",
   "time": { "from": "now-30d", "to": "now" },
@@ -248,6 +248,38 @@
       ]
     },
     {
+      "id": 18,
+      "title": "Avg context window (per API call)",
+      "type": "stat",
+      "description": "Average billed context window per API call: avg(total_input_tokens), i.e. input + cache-read + cache-write, which is exactly the prompt size sent to the model. Per-call grain (not per-session peak) so it matches the other stats on this row and honours the model filter directly.",
+      "datasource": { "type": "postgres", "uid": "claude-analytics-pg" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 12 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100000 },
+              { "color": "orange", "value": 150000 },
+              { "color": "red", "value": 180000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT round(avg(c.total_input_tokens), 0) AS avg_context_window_tokens FROM claude.api_calls c WHERE $__timeFilter(c.called_at) AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ',')))"
+        }
+      ]
+    },
+    {
       "id": 5,
       "title": "Tokens over time",
       "type": "timeseries",
@@ -372,7 +404,7 @@
         {
           "refId": "A",
           "format": "table",
-          "rawSql": "SELECT s.session_id, s.ai_title, s.total_input_tokens, s.output_tokens, s.cache_read_pct, s.api_calls, s.duration_seconds FROM claude.v_session_token_summary s WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) ORDER BY s.first_event_at DESC"
+          "rawSql": "SELECT s.session_id, s.ai_title, s.total_input_tokens, s.output_tokens, s.cache_read_pct, s.api_calls, s.duration_seconds, m.max_context_growth, m.max_time_api_calls FROM claude.v_session_token_summary s LEFT JOIN claude.v_session_context_metrics m USING (session_id) WHERE $__timeFilter(s.first_event_at) AND ('${model:csv}' = '' OR EXISTS (SELECT 1 FROM claude.api_calls c WHERE c.session_id = s.session_id AND c.model = ANY(string_to_array('${model:csv}', ',')))) ORDER BY s.first_event_at DESC"
         }
       ],
       "fieldConfig": {
@@ -391,6 +423,35 @@
                   }
                 ]
               }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "max_context_growth" },
+            "properties": [
+              { "id": "unit", "value": "short" },
+              { "id": "decimals", "value": 0 },
+              { "id": "displayName", "value": "Max context growth" },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "color", "value": { "mode": "thresholds" } },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "text", "value": null },
+                    { "color": "orange", "value": 20000 },
+                    { "color": "red", "value": 50000 }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "max_time_api_calls" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "decimals", "value": 0 },
+              { "id": "displayName", "value": "Max gap between calls" }
             ]
           }
         ]

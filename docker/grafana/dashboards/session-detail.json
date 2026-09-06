@@ -2,7 +2,7 @@
   "uid": "acp-session-detail",
   "title": "Session Detail",
   "schemaVersion": 39,
-  "version": 5,
+  "version": 6,
   "editable": false,
   "timezone": "utc",
   "time": {
@@ -338,6 +338,140 @@
       ]
     },
     {
+      "id": 16,
+      "title": "Avg context window (tokens/call)",
+      "type": "stat",
+      "description": "Average billed context window per API call in this session: avg(total_input_tokens) = input + cache-read + cache-write.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 7
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100000
+              },
+              {
+                "color": "orange",
+                "value": 150000
+              },
+              {
+                "color": "red",
+                "value": 180000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT round(avg(total_input_tokens), 0) AS avg_context_window_tokens FROM claude.v_call_detail WHERE session_id = ${session_id:sqlstring} AND ('${model:csv}' = '' OR model = ANY(string_to_array('${model:csv}', ',')))"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Avg context growth per call",
+      "type": "stat",
+      "description": "Mean of context_growth_tokens over this session's calls -- how much the billed context grew from one call to the next within a transcript. The first call of each transcript is NULL and is excluded from the average.",
+      "datasource": {
+        "type": "postgres",
+        "uid": "claude-analytics-pg"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 7
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 500
+              },
+              {
+                "color": "orange",
+                "value": 2000
+              },
+              {
+                "color": "red",
+                "value": 10000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT round(avg(e.context_growth_tokens), 0) AS avg_context_growth FROM claude.v_call_cache_efficiency e WHERE e.session_id = ${session_id:sqlstring} AND ('${model:csv}' = '' OR e.call_index IN (SELECT call_index FROM claude.v_call_detail d WHERE d.session_id = e.session_id AND d.model = ANY(string_to_array('${model:csv}', ','))))"
+        }
+      ]
+    },
+    {
       "id": 6,
       "title": "Call timeline (tokens per call, by agent)",
       "type": "barchart",
@@ -349,7 +483,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 11
       },
       "transformations": [
         {
@@ -446,7 +580,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 16
+        "y": 20
       },
       "options": {
         "xField": "call_index",
@@ -521,7 +655,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 25
+        "y": 29
       },
       "options": {
         "xField": "call_index",
@@ -609,7 +743,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 38
       },
       "options": {
         "xField": "call_index",
@@ -692,7 +826,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 43
+        "y": 47
       },
       "targets": [
         {
@@ -714,7 +848,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 43
+        "y": 47
       },
       "targets": [
         {
@@ -736,7 +870,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 55
       },
       "targets": [
         {
@@ -758,7 +892,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 59
+        "y": 63
       },
       "fieldConfig": {
         "defaults": {
