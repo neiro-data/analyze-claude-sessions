@@ -178,16 +178,40 @@ def _rows(conn: Connection[Any], agent: str) -> list[int]:
     ]
 
 
+def _full_rows(conn: Connection[Any], agent: str) -> list[dict[str, Any]]:
+    return conn.execute(
+        "SELECT call_id, transcript_id, session_id FROM claude.api_calls "
+        "WHERE agent = %s ORDER BY call_id",
+        (agent,),
+    ).fetchall()
+
+
+def _insert_call_id(
+    conn: Connection[Any], sid: uuid.UUID, transcript_id: int, agent: str, message_uuid: uuid.UUID
+) -> int:
+    row = conn.execute(
+        "INSERT INTO claude.api_calls (transcript_id, session_id, call_index, called_at, "
+        "message_uuid, agent, model) VALUES (%s, %s, 1, now(), %s, %s, 'm') RETURNING call_id",
+        (transcript_id, sid, message_uuid, agent),
+    ).fetchone()
+    assert row is not None
+    return int(row["call_id"])
+
+
 def test_relink_cross_session_drops_duplicate(conn: Connection[Any]) -> None:
     sid_a, main_a, _ = _seed(conn)
     sid_b, _, _ = _seed(conn)
     agent = f"x{uuid.uuid4().hex[:12]}"
     sub_b = _transcript(conn, sid_b, f"agent-{agent}")
     msg = uuid.uuid4()
-    _insert_call(conn, sid_a, main_a, agent, msg)
-    _insert_call(conn, sid_b, sub_b, agent, msg)
+    main_call = _insert_call_id(conn, sid_a, main_a, agent, msg)
+    sub_call = _insert_call_id(conn, sid_b, sub_b, agent, msg)
+    # the duplicate is deleted, not moved, so this agent contributes 0 moved rows
     relink_subagent_calls(conn)
-    assert _rows(conn, agent) == [sub_b]
+    rows = _full_rows(conn, agent)
+    assert [r["call_id"] for r in rows] == [sub_call]  # the sub row survives
+    assert main_call not in [r["call_id"] for r in rows]
+    assert rows[0]["transcript_id"] == sub_b
 
 
 def test_relink_cross_session_moves_row(conn: Connection[Any]) -> None:
@@ -198,7 +222,8 @@ def test_relink_cross_session_moves_row(conn: Connection[Any]) -> None:
     _insert_call(conn, sid_a, main_a, agent, uuid.uuid4())
     # global: may also backfill real rows, so only a lower bound on the count
     assert relink_subagent_calls(conn) >= 1
-    assert _rows(conn, agent) == [sub_b]
+    rows = _full_rows(conn, agent)
+    assert [(r["transcript_id"], r["session_id"]) for r in rows] == [(sub_b, sid_b)]
 
 
 def test_relink_prefers_same_session_transcript(conn: Connection[Any]) -> None:
@@ -219,7 +244,9 @@ def test_relink_cross_session_second_run_is_noop(conn: Connection[Any]) -> None:
     sub_b = _transcript(conn, sid_b, f"agent-{agent}")
     _insert_call(conn, sid_a, main_a, agent, uuid.uuid4())
     relink_subagent_calls(conn)
-    assert relink_subagent_calls(conn) == 0
+    before = _full_rows(conn, agent)
+    relink_subagent_calls(conn)  # global count is shared-DB dependent; check own rows
+    assert _full_rows(conn, agent) == before
     assert _rows(conn, agent) == [sub_b]
 
 
@@ -230,3 +257,33 @@ def test_relink_without_any_transcript_stays_on_main(conn: Connection[Any]) -> N
     _insert_call(conn, sid_a, main_a, agent, uuid.uuid4())
     relink_subagent_calls(conn)
     assert _rows(conn, agent) == [main_a]
+
+
+def test_relink_dedupes_two_main_rows_bound_for_one_sub(conn: Connection[Any]) -> None:
+    sid_a, main_a, _ = _seed(conn)
+    sid_c, main_c, _ = _seed(conn)
+    sid_b, _, _ = _seed(conn)
+    agent = f"x{uuid.uuid4().hex[:12]}"
+    sub_b = _transcript(conn, sid_b, f"agent-{agent}")
+    msg = uuid.uuid4()
+    first = _insert_call_id(conn, sid_a, main_a, agent, msg)
+    _insert_call_id(conn, sid_c, main_c, agent, msg)
+    relink_subagent_calls(conn)  # must not raise a unique violation
+    rows = _full_rows(conn, agent)
+    assert len(rows) == 1
+    assert rows[0]["call_id"] == first  # lowest call_id wins
+    assert rows[0]["transcript_id"] == sub_b
+    assert rows[0]["session_id"] == sid_b
+
+
+def test_relink_tie_break_picks_lowest_transcript_id(conn: Connection[Any]) -> None:
+    sid_a, main_a, _ = _seed(conn)
+    sid_b, _, _ = _seed(conn)
+    sid_c, _, _ = _seed(conn)
+    agent = f"x{uuid.uuid4().hex[:12]}"
+    sub_b = _transcript(conn, sid_b, f"agent-{agent}")
+    _transcript(conn, sid_c, f"agent-{agent}")
+    _insert_call(conn, sid_a, main_a, agent, uuid.uuid4())
+    relink_subagent_calls(conn)
+    rows = _full_rows(conn, agent)
+    assert [(r["transcript_id"], r["session_id"]) for r in rows] == [(sub_b, sid_b)]
