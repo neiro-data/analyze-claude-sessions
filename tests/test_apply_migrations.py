@@ -7,6 +7,7 @@ cannot be rolled back; it is idempotent and ends in the desired state.
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -45,11 +46,16 @@ def test_apply_migrations_prunes_orphans(conn: Connection[Any]) -> None:
     )
     conn.commit()
 
-    applied = apply_migrations(conn, _SQL_DIR)
+    try:
+        applied = apply_migrations(conn, _SQL_DIR)
 
-    rows = conn.execute("SELECT filename FROM claude.migrations").fetchall()
-    assert {r["filename"] for r in rows} == set(applied)
-    assert "999_fake_orphan.sql" not in applied
+        rows = conn.execute("SELECT filename FROM claude.migrations").fetchall()
+        assert {r["filename"] for r in rows} == set(applied)
+        assert "999_fake_orphan.sql" not in applied
+    finally:
+        conn.rollback()
+        conn.execute("DELETE FROM claude.migrations WHERE filename = %s", ("999_fake_orphan.sql",))
+        conn.commit()
 
 
 @pytest.mark.live_db
@@ -71,13 +77,23 @@ class _FakeCursor:
         pass
 
 
+class _FakeResult:
+    def __init__(self, rows: list[dict[str, str]]) -> None:
+        self._rows = rows
+
+    def fetchall(self) -> list[dict[str, str]]:
+        return self._rows
+
+
 class _FakeConn:
-    def __init__(self) -> None:
+    def __init__(self, pruned: list[str] | None = None) -> None:
         self.calls: list[tuple[str, Any]] = []
         self.committed = False
+        self._pruned = pruned or []
 
-    def execute(self, query: str, params: Any = None) -> None:
+    def execute(self, query: str, params: Any = None) -> _FakeResult:
         self.calls.append((query, params))
+        return _FakeResult([{"filename": n} for n in self._pruned])
 
     def cursor(self) -> _FakeCursor:
         return _FakeCursor()
@@ -86,15 +102,43 @@ class _FakeConn:
         self.committed = True
 
 
-def test_apply_migrations_delete_receives_full_filename_list(tmp_path: Path) -> None:
+def _two_files(tmp_path: Path) -> None:
     (tmp_path / "002_b.sql").write_text("select 2;")
     (tmp_path / "001_a.sql").write_text("select 1;")
+
+
+def test_apply_migrations_delete_receives_full_filename_list(tmp_path: Path) -> None:
+    _two_files(tmp_path)
     fake = _FakeConn()
 
     applied = apply_migrations(fake, tmp_path)  # type: ignore[arg-type]
 
-    query, params = fake.calls[-1]
+    query, params = next(c for c in fake.calls if "DELETE FROM" in c[0])
     assert applied == ["001_a.sql", "002_b.sql"]
     assert "DELETE FROM claude.migrations" in query
     assert params == (["001_a.sql", "002_b.sql"],)
     assert fake.committed
+
+
+def test_apply_migrations_warns_when_rows_pruned(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    _two_files(tmp_path)
+    fake = _FakeConn(pruned=["900_old.sql", "800_older.sql"])
+
+    with caplog.at_level(logging.WARNING, logger="analyze_claude_sessions.db"):
+        apply_migrations(fake, tmp_path)  # type: ignore[arg-type]
+
+    assert "pruned 2 migration rows" in caplog.text
+    assert "800_older.sql, 900_old.sql" in caplog.text
+
+
+def test_apply_migrations_silent_when_nothing_pruned(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    _two_files(tmp_path)
+
+    with caplog.at_level(logging.WARNING, logger="analyze_claude_sessions.db"):
+        apply_migrations(_FakeConn(), tmp_path)  # type: ignore[arg-type]
+
+    assert "pruned" not in caplog.text
