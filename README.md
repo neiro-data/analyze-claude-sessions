@@ -5,6 +5,16 @@
        alt="Claude Usage Overview dashboard: token, session, cache and cost totals, plus tokens over time">
 </p>
 
+## Why
+
+Claude Code hides per-call token, cache and cost usage inside local session transcripts.
+This tool loads them into PostgreSQL so you can query and chart them.
+
+- One Postgres row per API call, including sub-agent calls.
+- A Grafana dashboard for tokens, cache hit rate and cost.
+- An `acp` CLI and Parquet export.
+- One command to start: `make dashboard`.
+
 ## Resume
 
 This tool analyzes Claude Code session transcripts. It runs in Docker.
