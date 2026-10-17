@@ -59,7 +59,7 @@ transcripts.
 | `ingest_runs` | one `acp ingest` invocation: counts, status, error text |
 | `csv_files` | one generated CSV: path, sha256, row count, owning run |
 | `parquet_exports` | one `pg_parquet` export |
-| `migrations` | which `sql/*.sql` was applied, and when |
+| `migrations` | which `sql/*.sql` was applied, and when; mirrors the current `sql/` directory (rows for removed files are pruned by `make init-db`) |
 
 ### `/stats` vs. deduplicated tokens
 

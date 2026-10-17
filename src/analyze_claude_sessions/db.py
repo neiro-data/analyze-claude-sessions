@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -11,6 +12,8 @@ from typing import Any
 import psycopg
 from psycopg import Connection
 from psycopg.rows import dict_row
+
+logger = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -24,7 +27,8 @@ def apply_migrations(conn: Connection[Any], sql_dir: Path) -> list[str]:
     """Run every ``*.sql`` in *sql_dir* in filename order, recording what was applied.
 
     The scripts are written to be idempotent, so re-running them is safe; the
-    claude.migrations table exists to show *when* each one last changed.
+    claude.migrations table exists to show *when* each one last changed. The table
+    mirrors the current *sql_dir*: rows for files that were removed are pruned.
     """
     files = sorted(sql_dir.glob("*.sql"))
     if not files:
@@ -47,6 +51,15 @@ def apply_migrations(conn: Connection[Any], sql_dir: Path) -> list[str]:
         """,
         digests,
     )
+    pruned = conn.execute(
+        "DELETE FROM claude.migrations WHERE filename <> ALL(%s) RETURNING filename",
+        ([name for name, _ in digests],),
+    ).fetchall()
+    if pruned:
+        names = sorted(row["filename"] for row in pruned)
+        logger.warning(
+            "pruned %d migration rows not in %s: %s", len(names), sql_dir, ", ".join(names)
+        )
     conn.commit()
     return [name for name, _ in digests]
 
