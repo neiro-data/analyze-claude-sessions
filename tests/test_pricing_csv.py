@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from analyze_claude_projects.pricing import (
+from analyze_claude_sessions.pricing import (
     PricingParseError,
     diff_csv,
     is_retired,
@@ -149,7 +149,7 @@ def test_load_alias_map_missing_file_is_empty(tmp_path: Path) -> None:
 
 def test_tracked_pricing_csv_exists_and_parses() -> None:
     """data/reference/model_pricing.csv must exist, tracked, with the documented shape."""
-    from analyze_claude_projects.config import REPO_ROOT
+    from analyze_claude_sessions.config import REPO_ROOT
 
     csv_path = REPO_ROOT / "data" / "reference" / "model_pricing.csv"
     assert csv_path.exists(), f"{csv_path} is missing"

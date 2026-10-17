@@ -17,8 +17,8 @@ import pytest
 from psycopg import Connection
 from psycopg.rows import dict_row
 
-from analyze_claude_projects.config import Settings
-from analyze_claude_projects.loader import load_api_calls, relink_subagent_calls
+from analyze_claude_sessions.config import Settings
+from analyze_claude_sessions.loader import load_api_calls, relink_subagent_calls
 
 pytestmark = pytest.mark.live_db
 

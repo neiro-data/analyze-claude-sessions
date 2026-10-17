@@ -7,7 +7,7 @@ default `uv run pytest` path. Run explicitly with:
     uv run --group nlp pytest -m slow tests/test_nlp_stress_slow.py -s
 
 Reuses the shared, deterministic perturbation/backend/corpus helpers from
-`analyze_claude_projects.nlp_stress` -- see that module's docstring. This
+`analyze_claude_sessions.nlp_stress` -- see that module's docstring. This
 file adds the real-model measurements: perturbation robustness, a
 confidence-threshold sweep, scale/latency, and determinism checks. See also
 `scripts/rag_stress.py`, which runs the same battery and writes a report.
@@ -22,8 +22,8 @@ from typing import Any
 
 import pytest
 
-from analyze_claude_projects.nlp import CatalogRetriever, LocalEmbeddingBackend
-from analyze_claude_projects.nlp_stress import (
+from analyze_claude_sessions.nlp import CatalogRetriever, LocalEmbeddingBackend
+from analyze_claude_sessions.nlp_stress import (
     CONFIDENCE_SWEEP,
     PERTURBATIONS,
     FakeHashBackend,
@@ -118,7 +118,7 @@ def test_typo_rate_sweep(
     retriever: CatalogRetriever, eval_data: dict[str, Any], rate: float
 ) -> None:
     """typo_adjacent_swap at ~5% and ~10% per-char rates."""
-    from analyze_claude_projects.nlp_stress import typo_adjacent_swap
+    from analyze_claude_sessions.nlp_stress import typo_adjacent_swap
 
     pairs = paraphrase_pairs(eval_data)
     rng = random.Random(SEED)  # noqa: S311

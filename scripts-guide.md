@@ -117,8 +117,8 @@ make install-timer     # installs + loads a launchd agent, runs bin/ingest.sh ev
 make uninstall-timer   # unloads + removes it
 ```
 
-This writes `~/Library/LaunchAgents/com.analyze-claude-projects.ingest.plist` from
-`bin/launchd/com.analyze-claude-projects.ingest.plist.template`, resolving the repo root and
+This writes `~/Library/LaunchAgents/com.analyze-claude-sessions.ingest.plist` from
+`bin/launchd/com.analyze-claude-sessions.ingest.plist.template`, resolving the repo root and
 `docker`'s directory into an explicit `PATH` (launchd jobs start with a minimal environment, no
 shell profile). Logs go to `data/logs/ingest.launchd.{out,err}.log`; a completed run also shows
 up in `claude.ingest_runs` (`acp query "select * from claude.ingest_runs order by run_id desc
@@ -128,8 +128,8 @@ limit 5"`). Requires Docker Desktop (or equivalent) to be running at the schedul
 Check/trigger manually:
 
 ```bash
-launchctl list | grep com.analyze-claude-projects.ingest
-launchctl start com.analyze-claude-projects.ingest   # run once, right now
+launchctl list | grep com.analyze-claude-sessions.ingest
+launchctl start com.analyze-claude-sessions.ingest   # run once, right now
 ```
 
 ### [WIP] RAG / NLP (`acp ask`)
@@ -208,3 +208,34 @@ uv run --group nlp python scripts/rag_stress.py --quick    # small/fast sanity r
 or `make rag-stress` for the full report. It's excluded from `make check` and the default
 `pytest` run — same reasons as the eval above — and its reports (`data/reports/`) are
 gitignored scratch output, not tracked artifacts.
+
+## Upgrading from `analyze-claude-projects`
+
+The project was renamed to `analyze-claude-sessions`. Docker Compose derives volume names from the
+project name, so after the rename Compose creates **empty** `analyze-claude-sessions_*` volumes and
+the database looks wiped (the old data is still on disk, orphaned). Copy it over once, before
+running `make up` on the new version:
+
+```bash
+# on the old version
+make down
+for v in pgdata grafana-data; do
+  docker volume create analyze-claude-sessions_$v
+  docker run --rm -v analyze-claude-projects_$v:/from -v analyze-claude-sessions_$v:/to \
+    alpine cp -a /from/. /to/
+done
+# optional: skip the slow pg_parquet rebuild
+docker tag analyze-claude-projects/postgres-pg-parquet:17-0.5.1 \
+  analyze-claude-sessions/postgres-pg-parquet:17-0.5.1
+# on the new version
+make up
+make psql   # select count(*) from claude.api_calls;  must match the old count
+```
+
+Only after the counts match, remove the old volumes with `docker volume rm`.
+
+No volume copy wanted? Transcripts are the source of truth: `make init-db && make ingest` rebuilds
+everything except the append-only `claude.model_pricing` history (re-run `make pricing-sync-db`).
+
+If you installed the launchd timer, run `make uninstall-timer` before pulling and
+`make install-timer` after — the job label changed.

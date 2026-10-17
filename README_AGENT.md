@@ -5,7 +5,7 @@ implementation history that a human user does not need for day-to-day use.
 
 ## Versioning
 
-`pyproject.toml`'s version and `src/analyze_claude_projects/__init__.py:__version__` are managed by
+`pyproject.toml`'s version and `src/analyze_claude_sessions/__init__.py:__version__` are managed by
 release-please (see README.md#versioning). Never hand-edit either — release-please rewrites both in
 its release PR, keyed off the `# x-release-please-version` annotation comment in `__init__.py`.
 
@@ -32,7 +32,7 @@ docker/app/Dockerfile        python:3.12-slim + bash + jq + uv
 docker-compose.yml           postgres service + app CLI (profile: cli)
 sql/                         001 extensions … 013 duplicated tokens (see sql/ for full list)
 scripts/                     vendored per-call timing report, DuckDB ad-hoc, RAG stress
-src/analyze_claude_projects/
+src/analyze_claude_sessions/
   config.py                  env-driven settings
   discovery.py                find transcripts (main + subagent)
   jsonl_meta.py                stream a transcript for metadata

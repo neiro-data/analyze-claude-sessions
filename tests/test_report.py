@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from analyze_claude_projects.config import DEFAULT_REPORT_SCRIPT
-from analyze_claude_projects.discovery import discover_transcripts
-from analyze_claude_projects.report import ReportError, generate_report, parse_csv_name
+from analyze_claude_sessions.config import DEFAULT_REPORT_SCRIPT
+from analyze_claude_sessions.discovery import discover_transcripts
+from analyze_claude_sessions.report import ReportError, generate_report, parse_csv_name
 
 from .conftest import SESSION_ID
 

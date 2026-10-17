@@ -63,7 +63,7 @@ def _render(rows: list[dict[str, Any]], title: str) -> None:
 def version() -> None:
     """Print the tool version and the resolved configuration."""
     settings = get_settings()
-    console.print(f"analyze-claude-projects [bold]{__version__}[/bold]")
+    console.print(f"analyze-claude-sessions [bold]{__version__}[/bold]")
     console.print(f"  projects dir : {settings.projects_dir}")
     console.print(f"  csv dir      : {settings.csv_dir}")
     console.print(

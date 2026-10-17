@@ -23,7 +23,7 @@ from pglast import parse_sql
 from pglast.parser import ParseError
 from pglast.visitors import Visitor
 
-from analyze_claude_projects.config import get_settings
+from analyze_claude_sessions.config import get_settings
 
 #: Minimum cosine similarity for a top hit to be considered a confident match.
 CONFIDENCE_THRESHOLD = 0.5

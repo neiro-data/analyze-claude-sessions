@@ -15,7 +15,7 @@ import pytest
 from psycopg import Connection
 from psycopg.rows import dict_row
 
-from analyze_claude_projects.config import Settings
+from analyze_claude_sessions.config import Settings
 
 pytestmark = pytest.mark.live_db
 
@@ -89,8 +89,8 @@ def test_session_cost_matches_hand_computed_total(conn: Connection[Any]) -> None
 
 def test_pricing_sync_db_is_append_only_and_idempotent(conn: Connection[Any]) -> None:
     """`sync_db` never UPDATEs a priced row; re-running it twice is a no-op."""
-    from analyze_claude_projects.config import REPO_ROOT
-    from analyze_claude_projects.pricing_refresh import sync_db
+    from analyze_claude_sessions.config import REPO_ROOT
+    from analyze_claude_sessions.pricing_refresh import sync_db
 
     csv_path = REPO_ROOT / "data" / "reference" / "model_pricing.csv"
     alias_path = REPO_ROOT / "data" / "reference" / "model_id_map.csv"
@@ -110,8 +110,8 @@ def test_pricing_sync_db_is_append_only_and_idempotent(conn: Connection[Any]) ->
 
 def test_pricing_sync_db_skips_duplicate_seed_prices(conn: Connection[Any]) -> None:
     """The 4 seeded 2026-01-01 rows must not get a duplicate identical-price row."""
-    from analyze_claude_projects.config import REPO_ROOT
-    from analyze_claude_projects.pricing_refresh import sync_db
+    from analyze_claude_sessions.config import REPO_ROOT
+    from analyze_claude_sessions.pricing_refresh import sync_db
 
     csv_path = REPO_ROOT / "data" / "reference" / "model_pricing.csv"
     alias_path = REPO_ROOT / "data" / "reference" / "model_id_map.csv"

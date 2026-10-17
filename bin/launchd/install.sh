@@ -13,7 +13,7 @@ fi
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-label="com.analyze-claude-projects.ingest"
+label="com.analyze-claude-sessions.ingest"
 plist_dir="$HOME/Library/LaunchAgents"
 plist_path="$plist_dir/$label.plist"
 template="$repo_root/bin/launchd/$label.plist.template"

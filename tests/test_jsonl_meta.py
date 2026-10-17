@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import BinaryIO
 from unittest import mock
 
-from analyze_claude_projects.jsonl_meta import (
+from analyze_claude_sessions.jsonl_meta import (
     SessionMetadata,
     TranscriptCheckpoint,
     extract_metadata,

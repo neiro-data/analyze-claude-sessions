@@ -1,7 +1,7 @@
 -- Typed slots on the NLP catalog: `acp ask` refuses a match when the
 -- question carries a filter (session_id, since, project, model, limit) that
 -- the matched row's sql_text has no placeholder for, instead of silently
--- dropping it. See src/analyze_claude_projects/nlp.py:SlotSpec.
+-- dropping it. See src/analyze_claude_sessions/nlp.py:SlotSpec.
 --
 -- Idempotent: safe to replay via `acp init-db` on a fresh install (where
 -- sql/005_nlp_catalog.sql already creates `slots`) or a previously migrated

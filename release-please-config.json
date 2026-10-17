@@ -9,10 +9,10 @@
   "pull-request-title-pattern": "chore(main): release ${version}",
   "packages": {
     ".": {
-      "package-name": "analyze-claude-projects",
+      "package-name": "analyze-claude-sessions",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "src/analyze_claude_projects/__init__.py"
+        "src/analyze_claude_sessions/__init__.py"
       ]
     }
   }

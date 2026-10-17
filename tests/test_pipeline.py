@@ -7,10 +7,10 @@ from uuid import UUID
 
 import pytest
 
-from analyze_claude_projects import pipeline as pipeline_mod
-from analyze_claude_projects.config import Settings
-from analyze_claude_projects.discovery import TranscriptFile
-from analyze_claude_projects.pipeline import ingest_transcripts
+from analyze_claude_sessions import pipeline as pipeline_mod
+from analyze_claude_sessions.config import Settings
+from analyze_claude_sessions.discovery import TranscriptFile
+from analyze_claude_sessions.pipeline import ingest_transcripts
 
 from .conftest import SESSION_ID
 
@@ -370,7 +370,7 @@ def test_tail_ingest_resumes_from_a_realistic_checkpoint(
     monkeypatch.setattr(pipeline_mod, "record_csv_file", lambda *a, **k: 1)
     monkeypatch.setattr(pipeline_mod, "load_api_calls", lambda *a, **k: 1)
 
-    from analyze_claude_projects.jsonl_meta import extract_metadata
+    from analyze_claude_sessions.jsonl_meta import extract_metadata
 
     baseline = extract_metadata(transcript)
     with transcript.open("a", encoding="utf-8") as handle:

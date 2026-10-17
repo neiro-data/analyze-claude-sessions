@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS claude.nlp_examples (
     tags        text[]      NOT NULL DEFAULT '{}',
     -- Typed filters this row's sql_text can bind, e.g. '[{"name": "session_id",
     -- "type": "session_id"}]'. One entry per `%s` placeholder, in bind order.
-    -- See src/analyze_claude_projects/nlp.py:SlotSpec. A fresh install (this
+    -- See src/analyze_claude_sessions/nlp.py:SlotSpec. A fresh install (this
     -- file) and a migrated one (sql/009_nlp_slots.sql) must agree exactly.
     slots       jsonb       NOT NULL DEFAULT '[]',
     created_at  timestamptz NOT NULL DEFAULT now(),

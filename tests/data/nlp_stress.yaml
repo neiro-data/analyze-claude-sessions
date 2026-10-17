@@ -52,7 +52,7 @@ out_of_catalog:
     note: "~2000-char question, heavy repetition"
 
 # Perturbation-class config the slow suite/report script can drive
-# tests/analyze_claude_projects.nlp_stress.PERTURBATIONS with, instead of
+# tests/analyze_claude_sessions.nlp_stress.PERTURBATIONS with, instead of
 # hard-coding rates in Python.
 perturbation_config:
   seed: 20260829

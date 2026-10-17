@@ -1,7 +1,7 @@
 """Fast, deterministic, model-free stress tests.
 
 No network, no Postgres, no real sentence-transformers model: retrieval
-tests use `analyze_claude_projects.nlp_stress.FakeHashBackend`, a
+tests use `analyze_claude_sessions.nlp_stress.FakeHashBackend`, a
 hash-based deterministic stand-in for `Backend`. Every fuzz loop is seeded
 with an explicit `random.Random(seed)` and reports that seed on failure so a
 red test reproduces exactly.
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from analyze_claude_projects.nlp import (
+from analyze_claude_sessions.nlp import (
     CatalogRetriever,
     NlpExample,
     SlotSpec,
@@ -30,7 +30,7 @@ from analyze_claude_projects.nlp import (
     extract_slots,
     filter_examples,
 )
-from analyze_claude_projects.nlp_stress import (
+from analyze_claude_sessions.nlp_stress import (
     SQL_ADVERSARIAL_CORPUS,
     FakeHashBackend,
     generate_slot_questions,
