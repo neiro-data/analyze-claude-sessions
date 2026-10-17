@@ -154,6 +154,10 @@ def test_tracked_pricing_csv_exists_and_parses() -> None:
     csv_path = REPO_ROOT / "data" / "reference" / "model_pricing.csv"
     assert csv_path.exists(), f"{csv_path} is missing"
     rows = read_csv(csv_path)
-    assert len(rows) == 19
+    assert len(rows) == 20
     assert all(row.source_url == SOURCE_URL for row in rows)
-    assert {row.ingested_date for row in rows} == {date(2026, 9, 3), date(2026, 9, 22)}
+    assert {row.ingested_date for row in rows} == {
+        date(2026, 9, 3),
+        date(2026, 9, 22),
+        date(2026, 10, 17),
+    }
