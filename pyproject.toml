@@ -1,5 +1,5 @@
 [project]
-name = "analyze-claude-projects"
+name = "analyze-claude-sessions"
 version = "0.4.0"
 description = "Ingest Claude Code session transcripts into PostgreSQL (+pg_parquet) and analyse per-call token/cache behaviour."
 license = "MIT"
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-acp = "analyze_claude_projects.cli:app"
+acp = "analyze_claude_sessions.cli:app"
 
 [dependency-groups]
 dev = [
@@ -40,7 +40,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/analyze_claude_projects"]
+packages = ["src/analyze_claude_sessions"]
 
 [tool.ruff]
 line-length = 100

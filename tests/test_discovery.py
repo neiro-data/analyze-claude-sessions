@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from analyze_claude_projects.discovery import discover_transcripts
+from analyze_claude_sessions.discovery import discover_transcripts
 
 from .conftest import SESSION_ID
 

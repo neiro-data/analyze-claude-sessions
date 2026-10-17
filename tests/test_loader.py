@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from analyze_claude_projects.loader import LoadError, read_report_csv
-from analyze_claude_projects.report import CsvReport
+from analyze_claude_sessions.loader import LoadError, read_report_csv
+from analyze_claude_sessions.report import CsvReport
 
 from .conftest import SESSION_ID
 

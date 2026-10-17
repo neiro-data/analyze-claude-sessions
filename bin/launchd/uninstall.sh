@@ -2,7 +2,7 @@
 # Unload and remove the launchd job installed by bin/launchd/install.sh.
 set -euo pipefail
 
-label="com.analyze-claude-projects.ingest"
+label="com.analyze-claude-sessions.ingest"
 plist_path="$HOME/Library/LaunchAgents/$label.plist"
 
 if [[ ! -f "$plist_path" ]]; then

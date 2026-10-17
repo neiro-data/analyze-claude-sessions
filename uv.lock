@@ -3,7 +3,7 @@ revision = 3
 requires-python = "==3.12.*"
 
 [[package]]
-name = "analyze-claude-projects"
+name = "analyze-claude-sessions"
 version = "0.4.0"
 source = { editable = "." }
 dependencies = [

@@ -1,8 +1,8 @@
 """Run the real-model RAG stress battery and write a timestamped report.
 
-Reuses `analyze_claude_projects.nlp_stress` (perturbations, `FakeHashBackend`,
+Reuses `analyze_claude_sessions.nlp_stress` (perturbations, `FakeHashBackend`,
 `SQL_ADVERSARIAL_CORPUS`, `generate_slot_questions`) and the real
-`CatalogRetriever` / `LocalEmbeddingBackend` from `analyze_claude_projects.nlp`.
+`CatalogRetriever` / `LocalEmbeddingBackend` from `analyze_claude_sessions.nlp`.
 Mirrors the measurements in `tests/test_nlp_stress_slow.py`, packaged as a
 standalone, runnable report generator rather than a test.
 
@@ -26,7 +26,7 @@ from typing import Annotated
 
 import typer
 
-from analyze_claude_projects.nlp import (
+from analyze_claude_sessions.nlp import (
     DEFAULT_MODEL_NAME,
     CatalogRetriever,
     LocalEmbeddingBackend,
@@ -34,7 +34,7 @@ from analyze_claude_projects.nlp import (
     ensure_read_only,
     extract_slots,
 )
-from analyze_claude_projects.nlp_stress import (
+from analyze_claude_sessions.nlp_stress import (
     CONFIDENCE_SWEEP,
     PERTURBATIONS,
     SQL_ADVERSARIAL_CORPUS,

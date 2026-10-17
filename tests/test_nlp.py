@@ -14,9 +14,9 @@ import psycopg
 import pytest
 from typer.testing import CliRunner
 
-from analyze_claude_projects import cli as cli_mod
-from analyze_claude_projects import nlp as nlp_mod
-from analyze_claude_projects.nlp import (
+from analyze_claude_sessions import cli as cli_mod
+from analyze_claude_sessions import nlp as nlp_mod
+from analyze_claude_sessions.nlp import (
     CatalogRetriever,
     LocalEmbeddingBackend,
     NlpDependencyError,

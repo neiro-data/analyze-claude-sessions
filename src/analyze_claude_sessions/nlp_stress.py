@@ -1,4 +1,4 @@
-"""Deterministic, model-free stress-testing helpers for `analyze_claude_projects.nlp`.
+"""Deterministic, model-free stress-testing helpers for `analyze_claude_sessions.nlp`.
 
 Everything here is pure stdlib + numpy: no network, no Postgres, no real
 sentence-transformers model. It is shared by the fast test suite
@@ -28,7 +28,7 @@ import numpy as np
 import yaml
 from numpy.typing import NDArray
 
-from analyze_claude_projects.nlp import CatalogRetriever, NlpExample
+from analyze_claude_sessions.nlp import CatalogRetriever, NlpExample
 
 #: Signature every entry in `PERTURBATIONS` implements: given input text and a
 #: seeded RNG, return a perturbed copy. Pure function -- no hidden state.
@@ -265,7 +265,7 @@ PERTURBATIONS: dict[str, Perturbation] = {
 
 
 # --------------------------------------------------------------------------
-# Deterministic fake Backend (satisfies `analyze_claude_projects.nlp.Backend`)
+# Deterministic fake Backend (satisfies `analyze_claude_sessions.nlp.Backend`)
 # --------------------------------------------------------------------------
 
 _FAKE_EMBEDDING_DIM = 64

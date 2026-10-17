@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 import yaml
 
-from analyze_claude_projects.nlp import CatalogRetriever, LocalEmbeddingBackend, NlpExample
+from analyze_claude_sessions.nlp import CatalogRetriever, LocalEmbeddingBackend, NlpExample
 
 pytestmark = pytest.mark.slow
 

@@ -29,7 +29,7 @@ ingestion CLI, and a schema built over the per-API-call token and timing reports
   report on each transcript to produce a CSV. It loads the CSVs and transcript metadata into
   the `claude` schema in PostgreSQL. It shows the data in four Grafana dashboards. It can
   export any table or view to Parquet through `pg_parquet`.
-- **Entry point:** `src/analyze_claude_projects/cli.py` (the `acp` console script).
+- **Entry point:** `src/analyze_claude_sessions/cli.py` (the `acp` console script).
 - **Everything runs in containers.** The host only needs Docker and `make`. `uv` is needed
   only for local dev commands (`make check`) and for the optional `acp ask` tool.
 
@@ -131,7 +131,7 @@ docker/                       postgres (pg_parquet build) + app Dockerfiles, doc
 docker-compose.yml             postgres service, app CLI (profile: cli), grafana (profile: dashboard)
 sql/                           schema, views, and migrations (001–016)
 scripts/                       vendored report script, DuckDB ad-hoc queries, RAG stress harness
-src/analyze_claude_projects/   ingestion pipeline + `acp` CLI (see README_AGENT.md for a file map)
+src/analyze_claude_sessions/   ingestion pipeline + `acp` CLI (see README_AGENT.md for a file map)
 tests/                         test suite; the default run needs no database (live_db tests are opt-in)
 data/                          csv/, parquet/, backups/, reports/ — gitignored; reference/ (pricing CSV) is tracked
 README.md                      this file — quick start and concept overview

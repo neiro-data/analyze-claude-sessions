@@ -1,4 +1,4 @@
-name: analyze-claude-projects
+name: analyze-claude-sessions
 
 x-postgres-env: &postgres-env
   POSTGRES_USER: ${POSTGRES_USER:-claude}
@@ -13,7 +13,7 @@ services:
         PG_MAJOR: ${PG_MAJOR:-17}
         PG_PARQUET_VERSION: ${PG_PARQUET_VERSION:-0.5.1}
         PGRX_VERSION: ${PGRX_VERSION:-0.16.0}
-    image: analyze-claude-projects/postgres-pg-parquet:${PG_MAJOR:-17}-${PG_PARQUET_VERSION:-0.5.1}
+    image: analyze-claude-sessions/postgres-pg-parquet:${PG_MAJOR:-17}-${PG_PARQUET_VERSION:-0.5.1}
     container_name: acp-postgres
     # Repeated here so the setting survives even if postgresql.conf is replaced.
     command:
@@ -45,7 +45,7 @@ services:
     build:
       context: .
       dockerfile: docker/app/Dockerfile
-    image: analyze-claude-projects/app:${APP_VERSION:-0.1.0}
+    image: analyze-claude-sessions/app:${APP_VERSION:-0.1.0}
     container_name: acp-app
     depends_on:
       postgres:

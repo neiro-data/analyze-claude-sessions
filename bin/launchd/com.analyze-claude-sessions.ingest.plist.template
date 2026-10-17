@@ -9,7 +9,7 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.analyze-claude-projects.ingest</string>
+    <string>com.analyze-claude-sessions.ingest</string>
 
     <key>ProgramArguments</key>
     <array>
