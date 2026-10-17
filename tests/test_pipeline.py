@@ -93,7 +93,15 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     monkeypatch.setattr(pipeline_mod, "upsert_transcript", _upsert_transcript)
     monkeypatch.setattr(pipeline_mod, "record_interactions_upload", lambda *a, **k: None)
-    monkeypatch.setattr(pipeline_mod, "refresh_rollups", lambda *a, **k: None)
+
+    def _relink(*a: Any, **k: Any) -> int:
+        calls.append("relink")
+        return 0
+
+    monkeypatch.setattr(pipeline_mod, "relink_subagent_calls", _relink)
+    monkeypatch.setattr(
+        pipeline_mod, "refresh_rollups", lambda *a, **k: calls.append("refresh_rollups")
+    )
     return calls
 
 
@@ -141,6 +149,10 @@ def test_subagent_transcripts_skip_report_generation(
     assert calls.count("generate_report") == 1
     assert calls.count("read_report_csv") == 1
     assert calls.count("load_api_calls") == 1
+    # Relink runs once, after every load and before the rollup refresh.
+    assert calls.count("relink") == 1
+    assert calls.index("relink") > max(i for i, c in enumerate(calls) if c == "load_api_calls")
+    assert calls.index("relink") < calls.index("refresh_rollups")
 
 
 class _FakeFrame:
