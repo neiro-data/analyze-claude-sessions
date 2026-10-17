@@ -19,20 +19,95 @@ make logs          # tails PostgreSQL logs
 make ps            # shows container status
 ```
 
+## Grafana dashboards
+
+```bash
+make dashboard      # or: make up-grafana
+```
+
+Starts PostgreSQL plus a provisioned Grafana instance at
+`http://localhost:${GRAFANA_PORT:-3000}` — datasource and dashboards (usage overview,
+per-session detail, session lineage, multi-agent group sessions) are loaded automatically
+from `docker/grafana/`, no manual import needed. Grafana runs with anonymous Editor access
+and no login, by design for local single-user use; the port is bound to `127.0.0.1` only —
+don't expose it beyond localhost.
+
+```bash
+make down           # stops PostgreSQL and Grafana, keeps the data volume
+```
+
+There is no separate Grafana stop command — `make dashboard`/`make up-grafana` and `make up`
+share the same Compose project, so `make down` (or `make destroy` to also drop the volume)
+stops both.
+
+See [README.md — Dashboard](README.md#dashboard) for what each dashboard shows.
+
 ## Ingest
 
 - `make ingest` — runs `bin/ingest.sh` inside the app container.
 - `make ingest ARGS="--project billing"` — narrows to one project.
 - `make ingest ARGS="--force"` — re-reports transcripts that are byte-identical to what is
   already loaded.
-- `bin/ingest.sh [--project X | --force]` — the same, run directly; idempotent, safe to cron.
+- `bin/ingest.sh [--project X | --force]` — the same, run directly; idempotent, safe to cron
+  (see [Scheduled ingest](#scheduled-ingest-macos--launchd---optional), optional).
 - `bin/backup-db.sh [DEST]` — backs up the DB (`pg_dump` custom format) and parquet exports
   to `DEST` (default `./data/backups`).
 - `bin/prune-csv.sh [--days N] [--delete] --yes` — trims/archives the `data/csv/` audit
   folder; parquet + Postgres are the durable audit copy, so the raw CSVs are prunable.
 - `make stats` — prints ingest summary stats.
 
-### Scheduled ingest (macOS / launchd)
+## Ad-hoc charts without the database (DuckDB)
+
+With the stack **down**, `scripts/duckdb_parquet.py` opens the pg_parquet exports directly
+via DuckDB's `read_parquet` — no PostgreSQL, no containers:
+
+```bash
+uv run python scripts/duckdb_parquet.py                    # example aggregations
+uv run python scripts/duckdb_parquet.py --sql "SELECT model, count(*) FROM read_parquet('data/parquet/api_calls.parquet') GROUP BY model"
+```
+
+Requires `data/parquet/*.parquet` to already exist (`make export-parquet`, or any prior
+`make ingest` run — export happens automatically at the end of the pipeline).
+
+## Model pricing
+
+`data/reference/model_pricing.csv` is the source of truth for Claude API list prices (see
+[SCHEMA.md — Model pricing](SCHEMA.md#model-pricing-csv-source-of-truth)).
+
+```bash
+make pricing-refresh ARGS='--input data/reference/snapshots/pricing_<date>.md'
+                    # diffs a fetched pricing-page snapshot into the CSV; add --dry-run to preview
+make pricing-sync-db # loads the CSV into claude.model_pricing (append-only, idempotent)
+```
+
+To refresh: fetch `https://platform.claude.com/docs/en/about-claude/pricing` (an agent tool
+like WebFetch, or a manual copy-paste), save the "Model pricing" table as markdown to
+`data/reference/snapshots/pricing_<date>.md`, then run `make pricing-refresh`. Nothing is
+written to the CSV unless a price actually changed.
+
+## Development
+
+```bash
+make venv                  # uv sync
+uv sync --group nlp        # also needed for the tests: four NLP test modules import numpy
+make check                 # ruff + mypy --strict + pytest
+uv run pytest -m live_db   # opt-in: tests against a running PostgreSQL with sql/*.sql applied
+```
+
+Ruff (100 cols, `E,F,I,W,UP,S,B`) and the default test suite pass. Without the `nlp` group,
+pytest fails at collection with `ModuleNotFoundError: numpy`. `mypy --strict` has 9 known
+errors in `tests/test_nlp*.py` (missing type annotations and arg types), so `make check`
+does not pass yet. Tests mock nothing away that matters: the report tests shell out to the
+real script (skipped if `jq` is missing). The default run excludes `slow` and `live_db`
+tests, so it needs no PostgreSQL.
+
+## Optional features (in development)
+
+These features are opt-in. They are not part of the default setup, and they can change.
+
+### Scheduled ingest (macOS / launchd) - Optional
+
+> **Status:** optional, in development. macOS only.
 
 `bin/ingest.sh` is safe to run unattended, but nothing schedules it by default —
 `make install-timer` is the explicit, one-time opt-in:
@@ -57,20 +132,9 @@ launchctl list | grep com.analyze-claude-projects.ingest
 launchctl start com.analyze-claude-projects.ingest   # run once, right now
 ```
 
-## Ad-hoc charts without the database (DuckDB)
+### [WIP] RAG / NLP (`acp ask`)
 
-With the stack **down**, `scripts/duckdb_parquet.py` opens the pg_parquet exports directly
-via DuckDB's `read_parquet` — no PostgreSQL, no containers:
-
-```bash
-uv run python scripts/duckdb_parquet.py                    # example aggregations
-uv run python scripts/duckdb_parquet.py --sql "SELECT model, count(*) FROM read_parquet('data/parquet/api_calls.parquet') GROUP BY model"
-```
-
-Requires `data/parquet/*.parquet` to already exist (`make export-parquet`, or any prior
-`make ingest` run — export happens automatically at the end of the pipeline).
-
-## RAG / NLP (`acp ask`)
+> **Status:** optional, in development. Needs the `nlp` dependency group.
 
 Run it from the project root with `uv`:
 
@@ -112,10 +176,10 @@ group. The app image ships without it, so `ask` prints an install hint if it is 
 enable it with a one-time `uv sync --group nlp` (locally) or by rebuilding the image with
 that group. Every other `acp` command works without it.
 
-### Retrieval quality checks
+#### Retrieval quality checks
 
 ```bash
-uv run pytest -m slow tests/test_nlp_eval.py -s
+uv run --group nlp pytest -m slow tests/test_nlp_eval.py -s
 ```
 
 Loads the real embedding model against `tests/data/nlp_eval.yaml` (paraphrases per catalog
@@ -124,7 +188,7 @@ rate. Marked `slow` and excluded from `make check` / the default `pytest` run si
 a real model; run it by hand when changing retrieval and compare against the last printed
 numbers.
 
-### RAG stress suite (opt-in)
+#### RAG stress suite (opt-in)
 
 A heavier, real-model stress battery lives in `tests/test_nlp_stress_slow.py` (all tests
 marked `slow`) and `scripts/rag_stress.py`. It measures perturbation robustness (typos,
@@ -144,53 +208,3 @@ uv run --group nlp python scripts/rag_stress.py --quick    # small/fast sanity r
 or `make rag-stress` for the full report. It's excluded from `make check` and the default
 `pytest` run — same reasons as the eval above — and its reports (`data/reports/`) are
 gitignored scratch output, not tracked artifacts.
-
-## Grafana dashboards
-
-```bash
-make dashboard      # or: make up-grafana
-```
-
-Starts PostgreSQL plus a provisioned Grafana instance at
-`http://localhost:${GRAFANA_PORT:-3000}` — datasource and dashboards (usage overview,
-per-session detail, session lineage, multi-agent group sessions) are loaded automatically
-from `docker/grafana/`, no manual import needed. Grafana runs with anonymous Editor access
-and no login, by design for local single-user use; the port is bound to `127.0.0.1` only —
-don't expose it beyond localhost.
-
-```bash
-make down           # stops PostgreSQL and Grafana, keeps the data volume
-```
-
-There is no separate Grafana stop command — `make dashboard`/`make up-grafana` and `make up`
-share the same Compose project, so `make down` (or `make destroy` to also drop the volume)
-stops both.
-
-See [README.md — Dashboard](README.md#dashboard) for what each dashboard shows.
-
-## Model pricing
-
-`data/reference/model_pricing.csv` is the source of truth for Claude API list prices (see
-[SCHEMA.md — Model pricing](SCHEMA.md#model-pricing-csv-source-of-truth)).
-
-```bash
-make pricing-refresh ARGS='--input data/reference/snapshots/pricing_<date>.md'
-                    # diffs a fetched pricing-page snapshot into the CSV; add --dry-run to preview
-make pricing-sync-db # loads the CSV into claude.model_pricing (append-only, idempotent)
-```
-
-To refresh: fetch `https://platform.claude.com/docs/en/about-claude/pricing` (an agent tool
-like WebFetch, or a manual copy-paste), save the "Model pricing" table as markdown to
-`data/reference/snapshots/pricing_<date>.md`, then run `make pricing-refresh`. Nothing is
-written to the CSV unless a price actually changed.
-
-## Development
-
-```bash
-make venv       # uv sync
-make check      # ruff + mypy --strict + pytest
-```
-
-Ruff (100 cols, `E,F,I,W,UP,S,B`), `mypy --strict`, and the default test suite all pass. Tests
-mock nothing away that matters: the report tests shell out to the real script (skipped if
-`jq` is missing), and none of them need PostgreSQL.
