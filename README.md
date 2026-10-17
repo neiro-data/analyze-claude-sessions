@@ -139,3 +139,7 @@ scripts-guide.md                every command, grouped by component
 SCHEMA.md                       data model reference
 README_AGENT.md                 agent-only background notes
 ```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
