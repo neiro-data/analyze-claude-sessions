@@ -157,3 +157,67 @@ def test_relink_fixes_wrong_ingest_order_and_is_idempotent(conn: Connection[Any]
     conn.execute("DROP TABLE tmp_api_calls")  # staging table lives until commit
     _load(conn, sid, main_id, frame)  # re-load must not duplicate the relinked row
     assert _count(conn, sid) == 3
+
+
+def _insert_call(
+    conn: Connection[Any], sid: uuid.UUID, transcript_id: int, agent: str, message_uuid: uuid.UUID
+) -> None:
+    conn.execute(
+        "INSERT INTO claude.api_calls (transcript_id, session_id, call_index, called_at, "
+        "message_uuid, agent, model) VALUES (%s, %s, 1, now(), %s, %s, 'm')",
+        (transcript_id, sid, message_uuid, agent),
+    )
+
+
+def _rows(conn: Connection[Any], agent: str) -> list[int]:
+    return [
+        int(r["transcript_id"])
+        for r in conn.execute(
+            "SELECT transcript_id FROM claude.api_calls WHERE agent = %s", (agent,)
+        ).fetchall()
+    ]
+
+
+def test_relink_cross_session_drops_duplicate(conn: Connection[Any]) -> None:
+    sid_a, main_a, _ = _seed(conn)
+    sid_b, _, _ = _seed(conn)
+    agent = f"x{uuid.uuid4().hex[:12]}"
+    sub_b = _transcript(conn, sid_b, f"agent-{agent}")
+    msg = uuid.uuid4()
+    _insert_call(conn, sid_a, main_a, agent, msg)
+    _insert_call(conn, sid_b, sub_b, agent, msg)
+    relink_subagent_calls(conn)
+    assert _rows(conn, agent) == [sub_b]
+
+
+def test_relink_cross_session_moves_row(conn: Connection[Any]) -> None:
+    sid_a, main_a, _ = _seed(conn)
+    sid_b, _, _ = _seed(conn)
+    agent = f"x{uuid.uuid4().hex[:12]}"
+    sub_b = _transcript(conn, sid_b, f"agent-{agent}")
+    _insert_call(conn, sid_a, main_a, agent, uuid.uuid4())
+    # global: may also backfill real rows, so only a lower bound on the count
+    assert relink_subagent_calls(conn) >= 1
+    assert _rows(conn, agent) == [sub_b]
+
+
+def test_relink_prefers_same_session_transcript(conn: Connection[Any]) -> None:
+    sid_a, main_a, _ = _seed(conn)
+    sid_b, _, _ = _seed(conn)
+    agent = f"x{uuid.uuid4().hex[:12]}"
+    sub_a = _transcript(conn, sid_a, f"agent-{agent}")
+    _transcript(conn, sid_b, f"agent-{agent}")
+    _insert_call(conn, sid_a, main_a, agent, uuid.uuid4())
+    relink_subagent_calls(conn)
+    assert _rows(conn, agent) == [sub_a]
+
+
+def test_relink_cross_session_second_run_is_noop(conn: Connection[Any]) -> None:
+    sid_a, main_a, _ = _seed(conn)
+    sid_b, _, _ = _seed(conn)
+    agent = f"x{uuid.uuid4().hex[:12]}"
+    sub_b = _transcript(conn, sid_b, f"agent-{agent}")
+    _insert_call(conn, sid_a, main_a, agent, uuid.uuid4())
+    relink_subagent_calls(conn)
+    assert relink_subagent_calls(conn) == 0
+    assert _rows(conn, agent) == [sub_b]

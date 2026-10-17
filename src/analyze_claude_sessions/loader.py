@@ -297,7 +297,11 @@ def load_api_calls(
     csv_id: int | None,
     frame: pl.DataFrame,
 ) -> int:
-    """Stage the frame with COPY, then upsert into claude.api_calls."""
+    """Stage the frame with COPY, then upsert into claude.api_calls.
+
+    Sub-agent rows are linked within this session only; cross-session ones are
+    handled by the global `relink_subagent_calls` after the load loop.
+    """
     if frame.is_empty():
         return 0
 
@@ -383,20 +387,24 @@ def relink_subagent_calls(conn: Connection[Any]) -> int:
     """Move sub-agent api_calls stamped with the main transcript onto their own.
 
     Idempotent and global. Needed because main files are ingested before their
-    sub-agent transcripts exist, and it backfills history. Returns rows moved.
+    sub-agent transcripts exist, and it backfills history. The sub-agent
+    transcript is matched by agent_id across sessions (resumed/forked sessions
+    embed records whose .jsonl lives elsewhere); a same-session match wins.
+    Rows already present on the chosen sub-agent transcript are deleted as
+    duplicates first. Returns rows moved.
     """
     conn.execute(
         """
         DELETE FROM claude.api_calls d USING (
-            SELECT a.call_id, st.transcript_id AS sub_id, a.message_uuid
+            SELECT DISTINCT ON (a.call_id) a.call_id, st.transcript_id AS sub_id, a.message_uuid
             FROM claude.api_calls a
             JOIN claude.transcripts mt
               ON mt.transcript_id = a.transcript_id AND mt.kind = 'session'
             JOIN claude.transcripts st
-              ON st.session_id = mt.session_id
-             AND st.kind = 'subagent'
+              ON st.kind = 'subagent'
              AND st.agent_id = 'agent-' || a.agent
             WHERE a.agent <> 'main'
+            ORDER BY a.call_id, (st.session_id = mt.session_id) DESC
         ) m
         WHERE d.call_id = m.call_id
           AND EXISTS (
@@ -409,15 +417,15 @@ def relink_subagent_calls(conn: Connection[Any]) -> int:
         """
         UPDATE claude.api_calls u SET transcript_id = m.sub_id
         FROM (
-            SELECT a.call_id, st.transcript_id AS sub_id
+            SELECT DISTINCT ON (a.call_id) a.call_id, st.transcript_id AS sub_id
             FROM claude.api_calls a
             JOIN claude.transcripts mt
               ON mt.transcript_id = a.transcript_id AND mt.kind = 'session'
             JOIN claude.transcripts st
-              ON st.session_id = mt.session_id
-             AND st.kind = 'subagent'
+              ON st.kind = 'subagent'
              AND st.agent_id = 'agent-' || a.agent
             WHERE a.agent <> 'main'
+            ORDER BY a.call_id, (st.session_id = mt.session_id) DESC
         ) m
         WHERE u.call_id = m.call_id
         """
