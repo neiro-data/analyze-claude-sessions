@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.1](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.4.0...v0.4.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* **loader:** link sub-agent API calls to their own transcript ([cb26cc1](https://github.com/neiro-data/analyze-claude-sessions/commit/cb26cc1a6c934db03538fa879cca64e3f2e4887e))
+* **loader:** link sub-agent API calls to their own transcript ([53b6101](https://github.com/neiro-data/analyze-claude-sessions/commit/53b61010203f86a611753e3921a0063ff1605fbe))
+* **pricing:** add Claude Haiku 5.5 rates ([da7841f](https://github.com/neiro-data/analyze-claude-sessions/commit/da7841f8dfd2be465452bfda6e12da0e361e0a28))
+* **pricing:** add Claude Opus 5.5 and Sonnet 5.5 rates ([523db16](https://github.com/neiro-data/analyze-claude-sessions/commit/523db160fdf7a81780f7332d747f9a4f1f959e2e))
+* **pricing:** add Claude Opus 5.5 and Sonnet 5.5 rates ([1ebcf0f](https://github.com/neiro-data/analyze-claude-sessions/commit/1ebcf0fb57542bddb38c651587065d89b7260f4e))
+* **tests:** make check pass on fresh clone ([4171eae](https://github.com/neiro-data/analyze-claude-sessions/commit/4171eaebd96434617ff21fbb15a52da2f90ff8d9))
+
+
+### Documentation
+
+* add MIT license ([82b92a4](https://github.com/neiro-data/analyze-claude-sessions/commit/82b92a408b1c27c304e739f26115296a8a7d003e))
+* add social preview image ([aee05f3](https://github.com/neiro-data/analyze-claude-sessions/commit/aee05f30b2e3a813942166743ec374be00a168d1))
+* dashboard-first README, optional/WIP features, hero screenshot ([6425d7a](https://github.com/neiro-data/analyze-claude-sessions/commit/6425d7ab271b5e9750d3bdc4283b06d8a8833bd5))
+* dashboard-first README, optional/WIP features, hero screenshot ([b8a6542](https://github.com/neiro-data/analyze-claude-sessions/commit/b8a6542867eb6b908db1a449e39da75a89a9d932))
+* **readme:** add license section ([3797e92](https://github.com/neiro-data/analyze-claude-sessions/commit/3797e92eba2d36981a46677f7f012a9ff4d0df49))
+* **readme:** add why section ([1050584](https://github.com/neiro-data/analyze-claude-sessions/commit/1050584b1d46fd67aa9a18f2b0d0cf2a31b8a492))
+
 ## [0.4.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.3.1...v0.4.0) (2026-09-06)
 
 
