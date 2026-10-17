@@ -101,10 +101,23 @@ scraped from `platform.claude.com/docs/en/about-claude/pricing`, one row per
 - `acp pricing refresh --input <snapshot.md>` diffs a fetched pricing-page snapshot against
   the CSV and appends only the rows whose price actually changed.
 - `acp pricing sync-db` loads the CSV's latest-per-model prices into `claude.model_pricing`,
-  append-only (`INSERT ... ON CONFLICT DO NOTHING`, never an `UPDATE`).
+  append-only: it never overwrites a standard rate. The one exception is a fill-only
+  `ON CONFLICT (model, effective_from) DO UPDATE` that sets the long-context tier columns on
+  an existing row whose tier is still `NULL` (it never overwrites a tier that is already set).
+  Filled models are reported as `Filled long-context tier`. If a set tier differs from the CSV,
+  the row is left unchanged and the model is listed in a warning; a tier change needs a new
+  `effective_from` row.
 - `v_api_call_cost` / `v_api_call_cost_duplicated` and the three summary views pick the
   newest `model_pricing` row with `effective_from <= called_at::date` — a call before any
   priced row, or for an unpriced model, costs `NULL`, never `0`.
+- **Long-context tiers.** `model_pricing` has optional `long_context_threshold_tokens` plus
+  `long_context_{input,output,cache_write,cache_write_1h,cache_read}_usd_per_mtok` columns
+  (CSV: `long_context_*` appended after `source_url`; empty = no tier). When the picked row has a
+  tier and `api_calls.total_input_tokens` (input + cache write + cache read) is **strictly
+  greater** than the threshold, the whole request (input, cache write, cache read, output) is
+  priced at the long rates, in both cost views. A check constraint makes the tier all-or-none
+  (the 1h long rate may stay `NULL`; it is stored, not used by the views). `pricing refresh`
+  merges the page's "up to N tokens" / "over N tokens" row pairs into one row.
 - These are **list-price estimates**, not a Claude Pro bill.
 
 ## `pg_parquet`

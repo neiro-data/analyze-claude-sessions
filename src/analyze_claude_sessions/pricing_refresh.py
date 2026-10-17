@@ -57,6 +57,8 @@ class SyncResult:
     inserted: tuple[str, ...]
     skipped_unchanged: tuple[str, ...]
     unmatched_db_models: tuple[str, ...]
+    tier_filled: tuple[str, ...] = ()
+    tier_drift: tuple[str, ...] = ()
 
 
 def sync_db(
@@ -70,8 +72,9 @@ def sync_db(
 
     Append-only: for each target model id, compares against the newest
     existing DB row and inserts a new `effective_from` row only when a price
-    actually differs (or there is no existing row at all). Never UPDATEs a
-    priced row.
+    actually differs (or there is no existing row at all). Never overwrites a
+    standard rate; the only UPDATE is a fill-only one that sets a long-context
+    tier on an existing same-`effective_from` row whose tier is still NULL.
     """
     rows = read_csv(csv_path)
     latest_by_model: dict[str, PriceRow] = {}
@@ -87,12 +90,17 @@ def sync_db(
             targets[alias_id] = latest_by_model[base_id]
 
     inserted: list[str] = []
+    tier_filled: list[str] = []
+    tier_drift: list[str] = []
     skipped: list[str] = []
     for model_id, row in sorted(targets.items()):
         existing_row = conn.execute(
             """
             SELECT input_usd_per_mtok, output_usd_per_mtok,
-                   cache_write_usd_per_mtok, cache_read_usd_per_mtok
+                   cache_write_usd_per_mtok, cache_read_usd_per_mtok,
+                   long_context_threshold_tokens, long_context_input_usd_per_mtok,
+                   long_context_output_usd_per_mtok, long_context_cache_write_usd_per_mtok,
+                   long_context_cache_write_1h_usd_per_mtok, long_context_cache_read_usd_per_mtok
               FROM claude.model_pricing
              WHERE model = %s
              ORDER BY effective_from DESC
@@ -103,14 +111,29 @@ def sync_db(
         if existing_row is not None and _matches(existing_row, row):
             skipped.append(model_id)
             continue
-        conn.execute(
+        result = conn.execute(
             """
             INSERT INTO claude.model_pricing
                 (model, effective_from, input_usd_per_mtok, output_usd_per_mtok,
                  cache_write_usd_per_mtok, cache_write_1h_usd_per_mtok,
-                 cache_read_usd_per_mtok, retired, source)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (model, effective_from) DO NOTHING
+                 cache_read_usd_per_mtok, retired, source,
+                 long_context_threshold_tokens, long_context_input_usd_per_mtok,
+                 long_context_output_usd_per_mtok, long_context_cache_write_usd_per_mtok,
+                 long_context_cache_write_1h_usd_per_mtok, long_context_cache_read_usd_per_mtok)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (model, effective_from) DO UPDATE SET
+                long_context_threshold_tokens = EXCLUDED.long_context_threshold_tokens,
+                long_context_input_usd_per_mtok = EXCLUDED.long_context_input_usd_per_mtok,
+                long_context_output_usd_per_mtok = EXCLUDED.long_context_output_usd_per_mtok,
+                long_context_cache_write_usd_per_mtok =
+                    EXCLUDED.long_context_cache_write_usd_per_mtok,
+                long_context_cache_write_1h_usd_per_mtok =
+                    EXCLUDED.long_context_cache_write_1h_usd_per_mtok,
+                long_context_cache_read_usd_per_mtok =
+                    EXCLUDED.long_context_cache_read_usd_per_mtok
+            WHERE claude.model_pricing.long_context_threshold_tokens IS NULL
+              AND EXCLUDED.long_context_threshold_tokens IS NOT NULL
+            RETURNING (xmax = 0) AS inserted
             """,
             (
                 model_id,
@@ -122,9 +145,18 @@ def sync_db(
                 row.cache_read_usd_per_mtok,
                 row.retired,
                 f"{source_url}, ingested {row.ingested_date.isoformat()}",
+                row.long_context_threshold_tokens,
+                row.long_context_base_input_usd_per_mtok,
+                row.long_context_output_usd_per_mtok,
+                row.long_context_cache_write_5m_usd_per_mtok,
+                row.long_context_cache_write_1h_usd_per_mtok,
+                row.long_context_cache_read_usd_per_mtok,
             ),
-        )
-        inserted.append(model_id)
+        ).fetchone()
+        if result is None:
+            tier_drift.append(model_id)  # same effective_from, tier differs: left untouched
+            continue
+        (inserted if result["inserted"] else tier_filled).append(model_id)
     conn.commit()
 
     db_models = {
@@ -136,12 +168,21 @@ def sync_db(
     unmatched = tuple(sorted(db_models - set(targets) - {"<synthetic>"}))
 
     return SyncResult(
-        inserted=tuple(inserted), skipped_unchanged=tuple(skipped), unmatched_db_models=unmatched
+        inserted=tuple(inserted),
+        skipped_unchanged=tuple(skipped),
+        unmatched_db_models=unmatched,
+        tier_filled=tuple(tier_filled),
+        tier_drift=tuple(tier_drift),
     )
 
 
 def _matches(existing_row: Any, row: PriceRow) -> bool:
     from decimal import Decimal
+
+    def same(db_value: Any, csv_value: str | int | None) -> bool:
+        if db_value is None or csv_value is None:
+            return db_value is None and csv_value is None
+        return Decimal(db_value) == Decimal(csv_value)
 
     return (
         Decimal(existing_row["input_usd_per_mtok"]) == Decimal(row.base_input_usd_per_mtok)
@@ -149,4 +190,20 @@ def _matches(existing_row: Any, row: PriceRow) -> bool:
         and Decimal(existing_row["cache_write_usd_per_mtok"])
         == Decimal(row.cache_write_5m_usd_per_mtok)
         and Decimal(existing_row["cache_read_usd_per_mtok"]) == Decimal(row.cache_read_usd_per_mtok)
+        and same(existing_row["long_context_threshold_tokens"], row.long_context_threshold_tokens)
+        and same(
+            existing_row["long_context_input_usd_per_mtok"],
+            row.long_context_base_input_usd_per_mtok,
+        )
+        and same(
+            existing_row["long_context_output_usd_per_mtok"], row.long_context_output_usd_per_mtok
+        )
+        and same(
+            existing_row["long_context_cache_write_usd_per_mtok"],
+            row.long_context_cache_write_5m_usd_per_mtok,
+        )
+        and same(
+            existing_row["long_context_cache_read_usd_per_mtok"],
+            row.long_context_cache_read_usd_per_mtok,
+        )
     )

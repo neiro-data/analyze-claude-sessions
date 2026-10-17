@@ -26,6 +26,12 @@ CSV_FIELDS = (
     "retired",
     "ingested_date",
     "source_url",
+    "long_context_threshold_tokens",
+    "long_context_base_input_usd_per_mtok",
+    "long_context_cache_write_5m_usd_per_mtok",
+    "long_context_cache_write_1h_usd_per_mtok",
+    "long_context_cache_read_usd_per_mtok",
+    "long_context_output_usd_per_mtok",
 )
 
 _PRICE_FIELDS = (
@@ -35,6 +41,17 @@ _PRICE_FIELDS = (
     "cache_read_usd_per_mtok",
     "output_usd_per_mtok",
 )
+
+# Optional long-context (prompt-length) tier rates, all text, None when absent.
+_LONG_PRICE_FIELDS = (
+    "long_context_base_input_usd_per_mtok",
+    "long_context_cache_write_5m_usd_per_mtok",
+    "long_context_cache_write_1h_usd_per_mtok",
+    "long_context_cache_read_usd_per_mtok",
+    "long_context_output_usd_per_mtok",
+)
+
+_TIER_RE = re.compile(r"\(for prompts (up to|over) ([\d,]+) tokens\)\s*$", re.IGNORECASE)
 
 MIN_SNAPSHOT_ROWS = 5
 
@@ -57,6 +74,12 @@ class PriceRow:
     retired: bool
     ingested_date: date
     source_url: str
+    long_context_threshold_tokens: int | None = None
+    long_context_base_input_usd_per_mtok: str | None = None
+    long_context_cache_write_5m_usd_per_mtok: str | None = None
+    long_context_cache_write_1h_usd_per_mtok: str | None = None
+    long_context_cache_read_usd_per_mtok: str | None = None
+    long_context_output_usd_per_mtok: str | None = None
 
     def as_csv_dict(self) -> dict[str, str]:
         return {
@@ -70,16 +93,32 @@ class PriceRow:
             "retired": "true" if self.retired else "false",
             "ingested_date": self.ingested_date.isoformat(),
             "source_url": self.source_url,
+            "long_context_threshold_tokens": (
+                ""
+                if self.long_context_threshold_tokens is None
+                else str(self.long_context_threshold_tokens)
+            ),
+            **{f: getattr(self, f) or "" for f in _LONG_PRICE_FIELDS},
         }
 
     def prices_equal(self, other: PriceRow) -> bool:
         """Numeric equality on prices + retired flag, ignoring text formatting."""
         if self.retired != other.retired:
             return False
-        return all(
+        if self.long_context_threshold_tokens != other.long_context_threshold_tokens:
+            return False
+        if not all(
             Decimal(getattr(self, field)) == Decimal(getattr(other, field))
             for field in _PRICE_FIELDS
-        )
+        ):
+            return False
+        for field in _LONG_PRICE_FIELDS:
+            mine, theirs = getattr(self, field), getattr(other, field)
+            if (mine is None) != (theirs is None):
+                return False
+            if mine is not None and Decimal(mine) != Decimal(theirs):
+                return False
+        return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +172,12 @@ def read_csv(path: Path) -> list[PriceRow]:
                 retired=row["retired"].strip().lower() == "true",
                 ingested_date=date.fromisoformat(row["ingested_date"]),
                 source_url=row["source_url"],
+                long_context_threshold_tokens=(
+                    int(row["long_context_threshold_tokens"])
+                    if row.get("long_context_threshold_tokens")
+                    else None
+                ),
+                **{f: row.get(f) or None for f in _LONG_PRICE_FIELDS},
             )
             for row in reader
         ]
@@ -157,6 +202,7 @@ def parse_snapshot(text: str, *, ingested_date: date, source_url: str) -> list[P
     empty/shrunken table -- a parser drift on the docs page must be loud.
     """
     rows: list[PriceRow] = []
+    tiers: list[tuple[PriceRow, str, int]] = []
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped.startswith("|"):
@@ -173,26 +219,72 @@ def parse_snapshot(text: str, *, ingested_date: date, source_url: str) -> list[P
             prices = [_parse_money(cell) for cell in cells[1:]]
         except ValueError as exc:
             raise PricingParseError(f"Unparseable price cell in row {cells!r}: {exc}") from exc
-        rows.append(
-            PriceRow(
-                model=normalize_model_id(display_name),
-                model_display_name=display_name,
-                base_input_usd_per_mtok=prices[0],
-                cache_write_5m_usd_per_mtok=prices[1],
-                cache_write_1h_usd_per_mtok=prices[2],
-                cache_read_usd_per_mtok=prices[3],
-                output_usd_per_mtok=prices[4],
-                retired=is_retired(display_name),
-                ingested_date=ingested_date,
-                source_url=source_url,
-            )
+        base_name, kind, threshold = _split_tier(display_name)
+        price_row = PriceRow(
+            model=normalize_model_id(display_name),
+            model_display_name=base_name,
+            base_input_usd_per_mtok=prices[0],
+            cache_write_5m_usd_per_mtok=prices[1],
+            cache_write_1h_usd_per_mtok=prices[2],
+            cache_read_usd_per_mtok=prices[3],
+            output_usd_per_mtok=prices[4],
+            retired=is_retired(display_name),
+            ingested_date=ingested_date,
+            source_url=source_url,
         )
+        if kind is None or threshold is None:
+            rows.append(price_row)
+        else:
+            tiers.append((price_row, kind, threshold))
+    rows.extend(_merge_tiers(tiers))
     if len(rows) < MIN_SNAPSHOT_ROWS:
         raise PricingParseError(
             f"Parsed only {len(rows)} pricing row(s), expected at least {MIN_SNAPSHOT_ROWS} -- "
             "refusing to treat this as a valid snapshot."
         )
     return rows
+
+
+def _split_tier(display_name: str) -> tuple[str, str | None, int | None]:
+    """`Claude X (for prompts over 100,000 tokens)` -> (`Claude X`, `over`, 100000)."""
+    match = _TIER_RE.search(display_name)
+    if not match:
+        return display_name, None, None
+    base = display_name[: match.start()].strip()
+    return base, match.group(1).lower().replace(" ", "_"), int(match.group(2).replace(",", ""))
+
+
+def _merge_tiers(tiers: list[tuple[PriceRow, str, int]]) -> list[PriceRow]:
+    """Merge "up to N" / "over N" row pairs into one row carrying the long-context tier."""
+    by_model: dict[str, dict[str, tuple[PriceRow, int]]] = {}
+    for row, kind, threshold in tiers:
+        slot = by_model.setdefault(row.model, {})
+        if kind in slot:
+            raise PricingParseError(f"Duplicate '{kind}' tier row for {row.model}")
+        slot[kind] = (row, threshold)
+    merged: list[PriceRow] = []
+    for model, slot in by_model.items():
+        if "up_to" not in slot or "over" not in slot:
+            raise PricingParseError(
+                f"Tiered pricing for {model} needs both 'up to' and 'over' rows"
+            )
+        (std, up_n), (lng, over_n) = slot["up_to"], slot["over"]
+        if up_n != over_n:
+            raise PricingParseError(
+                f"Tier thresholds for {model} differ: up to {up_n} vs over {over_n}"
+            )
+        merged.append(
+            replace(
+                std,
+                long_context_threshold_tokens=up_n,
+                long_context_base_input_usd_per_mtok=lng.base_input_usd_per_mtok,
+                long_context_cache_write_5m_usd_per_mtok=lng.cache_write_5m_usd_per_mtok,
+                long_context_cache_write_1h_usd_per_mtok=lng.cache_write_1h_usd_per_mtok,
+                long_context_cache_read_usd_per_mtok=lng.cache_read_usd_per_mtok,
+                long_context_output_usd_per_mtok=lng.output_usd_per_mtok,
+            )
+        )
+    return merged
 
 
 def _parse_money(cell: str) -> str:

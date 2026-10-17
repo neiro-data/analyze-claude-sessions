@@ -450,6 +450,16 @@ def pricing_sync_db_cmd() -> None:
         console.print(f"[green]Inserted[/green] {len(result.inserted)}: {names}")
     else:
         console.print("[dim]No new rows to insert[/dim]")
+    if result.tier_filled:
+        console.print(
+            f"[green]Filled long-context tier[/green] {len(result.tier_filled)}: "
+            f"{', '.join(result.tier_filled)}"
+        )
+    if result.tier_drift:
+        console.print(
+            f"[yellow]Warning:[/yellow] long-context tier differs from CSV, left unchanged "
+            f"(a tier change needs a new effective_from): {', '.join(result.tier_drift)}"
+        )
     console.print(f"{len(result.skipped_unchanged)} unchanged, skipped")
     if result.unmatched_db_models:
         console.print(

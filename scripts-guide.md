@@ -83,7 +83,8 @@ make pricing-sync-db # loads the CSV into claude.model_pricing (append-only, ide
 To refresh: fetch `https://platform.claude.com/docs/en/about-claude/pricing` (an agent tool
 like WebFetch, or a manual copy-paste), save the "Model pricing" table as markdown to
 `data/reference/snapshots/pricing_<date>.md`, then run `make pricing-refresh`. Nothing is
-written to the CSV unless a price actually changed.
+written to the CSV unless a price actually changed. Rows for "(for prompts up to/over N
+tokens)" are merged into one CSV row carrying the long-context tier.
 
 ## Development
 
