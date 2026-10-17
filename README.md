@@ -51,6 +51,9 @@ make dashboard    # starts Grafana at http://localhost:3000
 For every other command — ingest options, backups, pricing, and dev commands — see
 **[scripts-guide.md](scripts-guide.md)**.
 
+The cost views support prompt-length pricing tiers (Haiku 5.5 above 100k input tokens is priced
+at long-context rates).
+
 ## Dashboard
 
 ```bash

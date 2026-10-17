@@ -5,6 +5,7 @@ No database needed -- these are pure functions over strings/dataclasses.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
@@ -30,6 +31,11 @@ SNAPSHOT = """\
 | Claude Haiku 4.5 | $1 / MTok | $1.25 / MTok | $2 / MTok | $0.10 / MTok | $5 / MTok |
 | Claude Mythos 5.1 (limited availability) | $10 / MTok | $12.50 / MTok | $20 / MTok | $0.25 / MTok | $50 / MTok |
 | Claude Sonnet 4.5 | $3 / MTok | $3.75 / MTok | $6 / MTok | $0.30 / MTok | $15 / MTok |
+"""
+
+TIER_ROWS = """\
+| Claude Haiku 5.5 (for prompts up to 100,000 tokens) | $0.10 / MTok | $0.125 / MTok | $0.20 / MTok | $0.01 / MTok | $0.50 / MTok |
+| Claude Haiku 5.5 (for prompts over 100,000 tokens) | $0.50 / MTok | $0.625 / MTok | $1 / MTok | $0.05 / MTok | $2.50 / MTok |
 """
 
 SOURCE_URL = "https://platform.claude.com/docs/en/about-claude/pricing"
@@ -136,6 +142,90 @@ def test_csv_round_trip_is_byte_identical(tmp_path: Path) -> None:
     assert first == second
 
 
+def test_round_trip_with_tier_is_byte_identical(tmp_path: Path) -> None:
+    rows = parse_snapshot(
+        SNAPSHOT + TIER_ROWS, ingested_date=date(2026, 9, 3), source_url=SOURCE_URL
+    )
+    csv_path = tmp_path / "model_pricing.csv"
+    write_csv(csv_path, rows)
+    first = csv_path.read_bytes()
+    reloaded = read_csv(csv_path)
+    assert any(r.long_context_threshold_tokens == 100000 for r in reloaded)
+    write_csv(csv_path, reloaded)
+    assert first == csv_path.read_bytes()
+
+
+def test_read_csv_legacy_header_has_no_tier(tmp_path: Path) -> None:
+    csv_path = tmp_path / "legacy.csv"
+    csv_path.write_text(
+        "model,model_display_name,base_input_usd_per_mtok,cache_write_5m_usd_per_mtok,"
+        "cache_write_1h_usd_per_mtok,cache_read_usd_per_mtok,output_usd_per_mtok,retired,"
+        f"ingested_date,source_url\nclaude-x,Claude X,1,1.25,2,0.10,5,false,2026-09-03,{SOURCE_URL}\n"
+    )
+    (row,) = read_csv(csv_path)
+    assert row.long_context_threshold_tokens is None
+    assert row.long_context_output_usd_per_mtok is None
+
+
+def test_parse_snapshot_merges_tier_pair() -> None:
+    rows = parse_snapshot(
+        SNAPSHOT + TIER_ROWS, ingested_date=date(2026, 10, 17), source_url=SOURCE_URL
+    )
+    haiku = [r for r in rows if r.model == "claude-haiku-5-5"]
+    assert len(haiku) == 1
+    (h,) = haiku
+    assert h.model_display_name == "Claude Haiku 5.5"
+    assert (h.base_input_usd_per_mtok, h.cache_write_5m_usd_per_mtok) == ("0.10", "0.125")
+    assert (h.cache_write_1h_usd_per_mtok, h.cache_read_usd_per_mtok) == ("0.20", "0.01")
+    assert h.output_usd_per_mtok == "0.50"
+    assert h.long_context_threshold_tokens == 100000
+    assert h.long_context_base_input_usd_per_mtok == "0.50"
+    assert h.long_context_cache_write_5m_usd_per_mtok == "0.625"
+    assert h.long_context_cache_write_1h_usd_per_mtok == "1"
+    assert h.long_context_cache_read_usd_per_mtok == "0.05"
+    assert h.long_context_output_usd_per_mtok == "2.50"
+    for r in rows:
+        if r.model != "claude-haiku-5-5":
+            assert r.long_context_threshold_tokens is None
+            assert r.long_context_output_usd_per_mtok is None
+
+
+def test_parse_snapshot_rejects_half_tier_and_mismatched_threshold() -> None:
+    over_only = TIER_ROWS.splitlines()[1] + "\n"
+    with pytest.raises(PricingParseError):
+        parse_snapshot(
+            SNAPSHOT + over_only, ingested_date=date(2026, 10, 17), source_url=SOURCE_URL
+        )
+    mismatched = TIER_ROWS.replace("over 100,000", "over 200,000")
+    with pytest.raises(PricingParseError):
+        parse_snapshot(
+            SNAPSHOT + mismatched, ingested_date=date(2026, 10, 17), source_url=SOURCE_URL
+        )
+
+
+def test_diff_csv_tier_unchanged_vs_changed() -> None:
+    tiered = parse_snapshot(
+        SNAPSHOT + TIER_ROWS, ingested_date=date(2026, 9, 3), source_url=SOURCE_URL
+    )
+    _, same = diff_csv(tiered, tiered, as_of=date(2026, 10, 17))
+    assert same.changed == 0 and same.new == 0
+    flat = [
+        replace(
+            r,
+            long_context_threshold_tokens=None,
+            long_context_base_input_usd_per_mtok=None,
+            long_context_cache_write_5m_usd_per_mtok=None,
+            long_context_cache_write_1h_usd_per_mtok=None,
+            long_context_cache_read_usd_per_mtok=None,
+            long_context_output_usd_per_mtok=None,
+        )
+        for r in tiered
+    ]
+    merged, changed = diff_csv(flat, tiered, as_of=date(2026, 10, 17))
+    assert changed.changed == 1
+    assert len(merged) == len(flat) + 1
+
+
 def test_load_alias_map_expands_snapshot_ids(tmp_path: Path) -> None:
     alias_path = tmp_path / "model_id_map.csv"
     alias_path.write_text("model,alias_for\nclaude-haiku-4-5-20251001,claude-haiku-4-5\n")
@@ -156,6 +246,8 @@ def test_tracked_pricing_csv_exists_and_parses() -> None:
     rows = read_csv(csv_path)
     assert len(rows) == 20
     assert all(row.source_url == SOURCE_URL for row in rows)
+    haiku = next(r for r in rows if r.model == "claude-haiku-5-5")
+    assert haiku.long_context_threshold_tokens == 100000
     assert {row.ingested_date for row in rows} == {
         date(2026, 9, 3),
         date(2026, 9, 22),
