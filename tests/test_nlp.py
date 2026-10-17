@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
@@ -742,7 +743,7 @@ def test_load_leaves_hub_reachable_when_model_uncached(
 
 
 def test_load_examples_maps_rows() -> None:
-    rows = [
+    rows: list[dict[str, Any]] = [
         {
             "example_id": 1,
             "question": "how many sessions",
@@ -836,7 +837,7 @@ class _FakeConnection:
 
 
 @contextmanager
-def _fake_connect(database_url: str, **kwargs: Any):
+def _fake_connect(database_url: str, **kwargs: Any) -> Iterator[_FakeConnection]:
     yield _FakeConnection()
 
 

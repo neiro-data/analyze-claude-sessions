@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import random
 import string
+from pathlib import Path
 
 import pytest
 
@@ -393,7 +394,7 @@ def test_catalog_retriever_empty_catalog_returns_empty() -> None:
     assert retriever.search("anything") == []
 
 
-def test_catalog_retriever_single_row(tmp_path) -> None:
+def test_catalog_retriever_single_row(tmp_path: Path) -> None:
     examples = _make_examples(1)
     retriever = CatalogRetriever(examples, FakeHashBackend(), cache_dir=tmp_path)
     results = retriever.search("question number 0 about sessions")
@@ -401,21 +402,21 @@ def test_catalog_retriever_single_row(tmp_path) -> None:
     assert results[0][0] is examples[0]
 
 
-def test_catalog_retriever_top_k_larger_than_catalog(tmp_path) -> None:
+def test_catalog_retriever_top_k_larger_than_catalog(tmp_path: Path) -> None:
     examples = _make_examples(3)
     retriever = CatalogRetriever(examples, FakeHashBackend(), cache_dir=tmp_path)
     results = retriever.search("question number 1 about sessions", top_k=100)
     assert len(results) == 3
 
 
-def test_catalog_retriever_top_k_one(tmp_path) -> None:
+def test_catalog_retriever_top_k_one(tmp_path: Path) -> None:
     examples = _make_examples(5)
     retriever = CatalogRetriever(examples, FakeHashBackend(), cache_dir=tmp_path)
     results = retriever.search("question number 2 about sessions", top_k=1)
     assert len(results) == 1
 
 
-def test_catalog_retriever_duplicate_identical_questions_tie_break_stable(tmp_path) -> None:
+def test_catalog_retriever_duplicate_identical_questions_tie_break_stable(tmp_path: Path) -> None:
     examples = [
         NlpExample(1, "same question text", "SELECT 1"),
         NlpExample(2, "same question text", "SELECT 2"),
@@ -430,7 +431,7 @@ def test_catalog_retriever_duplicate_identical_questions_tie_break_stable(tmp_pa
     assert [ex.example_id for ex, _ in first] == [ex.example_id for ex, _ in second]
 
 
-def test_catalog_retriever_very_long_question_does_not_raise(tmp_path) -> None:
+def test_catalog_retriever_very_long_question_does_not_raise(tmp_path: Path) -> None:
     examples = _make_examples(3)
     retriever = CatalogRetriever(examples, FakeHashBackend(), cache_dir=tmp_path)
     long_question = "sessions " * 2000
@@ -438,7 +439,7 @@ def test_catalog_retriever_very_long_question_does_not_raise(tmp_path) -> None:
     assert len(results) == 3
 
 
-def test_catalog_retriever_ranking_is_byte_identical_across_repeated_runs(tmp_path) -> None:
+def test_catalog_retriever_ranking_is_byte_identical_across_repeated_runs(tmp_path: Path) -> None:
     examples = _make_examples(20)
     retriever = CatalogRetriever(examples, FakeHashBackend(), cache_dir=tmp_path)
     baseline = retriever.search("question number 7 about sessions", top_k=20)
@@ -447,7 +448,7 @@ def test_catalog_retriever_ranking_is_byte_identical_across_repeated_runs(tmp_pa
         assert again == baseline
 
 
-def test_catalog_retriever_is_confident_threshold(tmp_path) -> None:
+def test_catalog_retriever_is_confident_threshold(tmp_path: Path) -> None:
     retriever = CatalogRetriever(_make_examples(1), FakeHashBackend(), cache_dir=tmp_path)
     assert retriever.is_confident(0.5) is True
     assert retriever.is_confident(0.49999) is False

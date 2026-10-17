@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 from uuid import UUID
 
 import pytest
+
+# numpy is a dev dependency; skip the NLP test modules when synced with `--no-dev`.
+collect_ignore = (
+    []
+    if importlib.util.find_spec("numpy")
+    else ["test_nlp.py", "test_nlp_stress.py", "test_nlp_eval.py", "test_nlp_stress_slow.py"]
+)
 
 SESSION_ID = UUID("bb5714bc-8305-4138-818a-3a96bcfe6549")
 
