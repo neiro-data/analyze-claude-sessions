@@ -253,3 +253,37 @@ def test_tracked_pricing_csv_exists_and_parses() -> None:
         date(2026, 9, 22),
         date(2026, 10, 17),
     }
+
+
+def test_parse_snapshot_tolerates_extra_note_after_tier_label() -> None:
+    noted = SNAPSHOT + TIER_ROWS.replace(
+        "(for prompts over 100,000 tokens)", "(for prompts over 100,000 tokens) (beta)"
+    )
+    rows = parse_snapshot(noted, ingested_date=date(2026, 9, 3), source_url=SOURCE_URL)
+    haiku = {r.model: r for r in rows}["claude-haiku-5-5"]
+    assert haiku.long_context_threshold_tokens == 100000
+    assert haiku.long_context_base_input_usd_per_mtok == "0.50"
+    assert len(rows) == 7
+
+
+def test_refresh_matches_compares_long_context_1h_cache_write() -> None:
+    from analyze_claude_sessions.pricing_refresh import _matches
+
+    rows = parse_snapshot(
+        SNAPSHOT + TIER_ROWS, ingested_date=date(2026, 9, 3), source_url=SOURCE_URL
+    )
+    haiku = {r.model: r for r in rows}["claude-haiku-5-5"]
+    db = {
+        "input_usd_per_mtok": haiku.base_input_usd_per_mtok,
+        "output_usd_per_mtok": haiku.output_usd_per_mtok,
+        "cache_write_usd_per_mtok": haiku.cache_write_5m_usd_per_mtok,
+        "cache_read_usd_per_mtok": haiku.cache_read_usd_per_mtok,
+        "long_context_threshold_tokens": haiku.long_context_threshold_tokens,
+        "long_context_input_usd_per_mtok": haiku.long_context_base_input_usd_per_mtok,
+        "long_context_output_usd_per_mtok": haiku.long_context_output_usd_per_mtok,
+        "long_context_cache_write_usd_per_mtok": haiku.long_context_cache_write_5m_usd_per_mtok,
+        "long_context_cache_write_1h_usd_per_mtok": haiku.long_context_cache_write_1h_usd_per_mtok,
+        "long_context_cache_read_usd_per_mtok": haiku.long_context_cache_read_usd_per_mtok,
+    }
+    assert _matches(db, haiku)
+    assert not _matches({**db, "long_context_cache_write_1h_usd_per_mtok": "9"}, haiku)

@@ -203,6 +203,10 @@ def _matches(existing_row: Any, row: PriceRow) -> bool:
             row.long_context_cache_write_5m_usd_per_mtok,
         )
         and same(
+            existing_row["long_context_cache_write_1h_usd_per_mtok"],
+            row.long_context_cache_write_1h_usd_per_mtok,
+        )
+        and same(
             existing_row["long_context_cache_read_usd_per_mtok"],
             row.long_context_cache_read_usd_per_mtok,
         )
