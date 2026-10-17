@@ -20,6 +20,7 @@ from .loader import (
     record_csv_file,
     record_interactions_upload,
     refresh_rollups,
+    relink_subagent_calls,
     upsert_project,
     upsert_session,
     upsert_transcript,
@@ -344,6 +345,7 @@ def ingest_transcripts(
             if on_progress:
                 on_progress(f"FAIL  {label}: {exc}")
 
+    relink_subagent_calls(conn)
     refresh_rollups(conn)
     elapsed = time.monotonic() - started
     record_interactions_upload(

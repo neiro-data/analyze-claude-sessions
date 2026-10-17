@@ -294,7 +294,7 @@ def load_api_calls(
     *,
     transcript_id: int,
     session_id: UUID,
-    csv_id: int,
+    csv_id: int | None,
     frame: pl.DataFrame,
 ) -> int:
     """Stage the frame with COPY, then upsert into claude.api_calls."""
@@ -341,12 +341,17 @@ def load_api_calls(
             usage_records, output_tokens_raw
         )
         SELECT DISTINCT ON (t.message_uuid)
-            %s, %s, %s, t.call_index, t.called_at, t.message_uuid,
+            coalesce(st.transcript_id, %(main)s), %(sid)s, %(csv)s,
+            t.call_index, t.called_at, t.message_uuid,
             t.input_tokens, t.cache_write_tokens, t.cache_read_tokens, t.output_tokens,
             t.delta_seconds, t.delta_seconds_global, t.agent, t.agent_type, t.depth,
             t.parent_agent, t.model, t.tool_use_id, t.description,
             t.usage_records, t.output_tokens_raw
         FROM tmp_api_calls t
+        LEFT JOIN claude.transcripts st
+               ON st.session_id = %(sid)s
+              AND st.kind = 'subagent'
+              AND st.agent_id = 'agent-' || t.agent
         WHERE t.message_uuid IS NOT NULL
         ORDER BY t.message_uuid, t.call_index
         ON CONFLICT (transcript_id, message_uuid) DO UPDATE SET
@@ -369,7 +374,53 @@ def load_api_calls(
             usage_records         = EXCLUDED.usage_records,
             output_tokens_raw     = EXCLUDED.output_tokens_raw
         """,
-        (transcript_id, str(session_id), csv_id),
+        {"main": transcript_id, "sid": str(session_id), "csv": csv_id},
+    )
+    return int(result.rowcount)
+
+
+def relink_subagent_calls(conn: Connection[Any]) -> int:
+    """Move sub-agent api_calls stamped with the main transcript onto their own.
+
+    Idempotent and global. Needed because main files are ingested before their
+    sub-agent transcripts exist, and it backfills history. Returns rows moved.
+    """
+    conn.execute(
+        """
+        DELETE FROM claude.api_calls d USING (
+            SELECT a.call_id, st.transcript_id AS sub_id, a.message_uuid
+            FROM claude.api_calls a
+            JOIN claude.transcripts mt
+              ON mt.transcript_id = a.transcript_id AND mt.kind = 'session'
+            JOIN claude.transcripts st
+              ON st.session_id = mt.session_id
+             AND st.kind = 'subagent'
+             AND st.agent_id = 'agent-' || a.agent
+            WHERE a.agent <> 'main'
+        ) m
+        WHERE d.call_id = m.call_id
+          AND EXISTS (
+              SELECT 1 FROM claude.api_calls x
+              WHERE x.transcript_id = m.sub_id AND x.message_uuid = m.message_uuid
+          )
+        """
+    )
+    result = conn.execute(
+        """
+        UPDATE claude.api_calls u SET transcript_id = m.sub_id
+        FROM (
+            SELECT a.call_id, st.transcript_id AS sub_id
+            FROM claude.api_calls a
+            JOIN claude.transcripts mt
+              ON mt.transcript_id = a.transcript_id AND mt.kind = 'session'
+            JOIN claude.transcripts st
+              ON st.session_id = mt.session_id
+             AND st.kind = 'subagent'
+             AND st.agent_id = 'agent-' || a.agent
+            WHERE a.agent <> 'main'
+        ) m
+        WHERE u.call_id = m.call_id
+        """
     )
     return int(result.rowcount)
 
