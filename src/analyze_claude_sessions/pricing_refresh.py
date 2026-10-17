@@ -111,6 +111,8 @@ def sync_db(
         if existing_row is not None and _matches(existing_row, row):
             skipped.append(model_id)
             continue
+        # Fill-only ON CONFLICT: set threshold + NULL long 1h rate reports tier_drift;
+        # fix that row with a manual UPDATE.
         result = conn.execute(
             """
             INSERT INTO claude.model_pricing

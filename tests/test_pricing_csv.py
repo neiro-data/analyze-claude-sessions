@@ -11,8 +11,12 @@ from pathlib import Path
 
 import pytest
 
+from analyze_claude_sessions.config import REPO_ROOT
 from analyze_claude_sessions.pricing import (
+    MIN_SNAPSHOT_ROWS,
+    PriceRow,
     PricingParseError,
+    _split_tier,
     diff_csv,
     is_retired,
     load_alias_map,
@@ -21,6 +25,7 @@ from analyze_claude_sessions.pricing import (
     read_csv,
     write_csv,
 )
+from analyze_claude_sessions.pricing_refresh import _matches
 
 SNAPSHOT = """\
 | Model | Base input tokens | 5m cache writes | 1h cache writes | Cache hits and refreshes | Output tokens |
@@ -239,8 +244,6 @@ def test_load_alias_map_missing_file_is_empty(tmp_path: Path) -> None:
 
 def test_tracked_pricing_csv_exists_and_parses() -> None:
     """data/reference/model_pricing.csv must exist, tracked, with the documented shape."""
-    from analyze_claude_sessions.config import REPO_ROOT
-
     csv_path = REPO_ROOT / "data" / "reference" / "model_pricing.csv"
     assert csv_path.exists(), f"{csv_path} is missing"
     rows = read_csv(csv_path)
@@ -267,24 +270,11 @@ def test_parse_snapshot_tolerates_extra_note_after_tier_label() -> None:
 
 
 def test_refresh_matches_compares_long_context_1h_cache_write() -> None:
-    from analyze_claude_sessions.pricing_refresh import _matches
-
     rows = parse_snapshot(
         SNAPSHOT + TIER_ROWS, ingested_date=date(2026, 9, 3), source_url=SOURCE_URL
     )
     haiku = {r.model: r for r in rows}["claude-haiku-5-5"]
-    db = {
-        "input_usd_per_mtok": haiku.base_input_usd_per_mtok,
-        "output_usd_per_mtok": haiku.output_usd_per_mtok,
-        "cache_write_usd_per_mtok": haiku.cache_write_5m_usd_per_mtok,
-        "cache_read_usd_per_mtok": haiku.cache_read_usd_per_mtok,
-        "long_context_threshold_tokens": haiku.long_context_threshold_tokens,
-        "long_context_input_usd_per_mtok": haiku.long_context_base_input_usd_per_mtok,
-        "long_context_output_usd_per_mtok": haiku.long_context_output_usd_per_mtok,
-        "long_context_cache_write_usd_per_mtok": haiku.long_context_cache_write_5m_usd_per_mtok,
-        "long_context_cache_write_1h_usd_per_mtok": haiku.long_context_cache_write_1h_usd_per_mtok,
-        "long_context_cache_read_usd_per_mtok": haiku.long_context_cache_read_usd_per_mtok,
-    }
+    db = _db_row_for(haiku)
     assert _matches(db, haiku)
     assert not _matches({**db, "long_context_cache_write_1h_usd_per_mtok": "9"}, haiku)
 
@@ -307,8 +297,6 @@ def test_tier_label_with_several_trailing_notes_merges_to_base_model() -> None:
 
 
 def test_non_tier_parenthetical_alone_is_not_a_tier() -> None:
-    from analyze_claude_sessions.pricing import _split_tier
-
     assert _split_tier("Claude Mythos 5.1 (limited availability)") == (
         "Claude Mythos 5.1 (limited availability)",
         None,
@@ -322,25 +310,22 @@ def test_non_tier_parenthetical_alone_is_not_a_tier() -> None:
     )
 
 
-def _db_row_for(row: object) -> dict[str, object]:
-    r = row  # PriceRow
+def _db_row_for(r: PriceRow) -> dict[str, object]:
     return {
-        "input_usd_per_mtok": r.base_input_usd_per_mtok,  # type: ignore[attr-defined]
-        "output_usd_per_mtok": r.output_usd_per_mtok,  # type: ignore[attr-defined]
-        "cache_write_usd_per_mtok": r.cache_write_5m_usd_per_mtok,  # type: ignore[attr-defined]
-        "cache_read_usd_per_mtok": r.cache_read_usd_per_mtok,  # type: ignore[attr-defined]
-        "long_context_threshold_tokens": r.long_context_threshold_tokens,  # type: ignore[attr-defined]
-        "long_context_input_usd_per_mtok": r.long_context_base_input_usd_per_mtok,  # type: ignore[attr-defined]
-        "long_context_output_usd_per_mtok": r.long_context_output_usd_per_mtok,  # type: ignore[attr-defined]
-        "long_context_cache_write_usd_per_mtok": r.long_context_cache_write_5m_usd_per_mtok,  # type: ignore[attr-defined]
-        "long_context_cache_write_1h_usd_per_mtok": r.long_context_cache_write_1h_usd_per_mtok,  # type: ignore[attr-defined]
-        "long_context_cache_read_usd_per_mtok": r.long_context_cache_read_usd_per_mtok,  # type: ignore[attr-defined]
+        "input_usd_per_mtok": r.base_input_usd_per_mtok,
+        "output_usd_per_mtok": r.output_usd_per_mtok,
+        "cache_write_usd_per_mtok": r.cache_write_5m_usd_per_mtok,
+        "cache_read_usd_per_mtok": r.cache_read_usd_per_mtok,
+        "long_context_threshold_tokens": r.long_context_threshold_tokens,
+        "long_context_input_usd_per_mtok": r.long_context_base_input_usd_per_mtok,
+        "long_context_output_usd_per_mtok": r.long_context_output_usd_per_mtok,
+        "long_context_cache_write_usd_per_mtok": r.long_context_cache_write_5m_usd_per_mtok,
+        "long_context_cache_write_1h_usd_per_mtok": r.long_context_cache_write_1h_usd_per_mtok,
+        "long_context_cache_read_usd_per_mtok": r.long_context_cache_read_usd_per_mtok,
     }
 
 
 def test_matches_null_safety_on_long_context_1h_rate() -> None:
-    from analyze_claude_sessions.pricing_refresh import _matches
-
     rows = parse_snapshot(
         SNAPSHOT + TIER_ROWS, ingested_date=date(2026, 9, 3), source_url=SOURCE_URL
     )
@@ -363,14 +348,12 @@ def test_matches_null_safety_on_long_context_1h_rate() -> None:
 
 
 def test_tracked_snapshots_reproduce_tracked_csv_without_diff() -> None:
-    from analyze_claude_sessions.config import REPO_ROOT
-
     ref = REPO_ROOT / "data" / "reference"
     existing = read_csv(ref / "model_pricing.csv")
     # Snapshots can hold fewer rows than MIN_SNAPSHOT_ROWS; pad with throwaway models.
     pad = "".join(
         f"| Claude Pad {n} | $1 / MTok | $1 / MTok | $1 / MTok | $1 / MTok | $1 / MTok |\n"
-        for n in range(5)
+        for n in range(MIN_SNAPSHOT_ROWS)
     )
     for snap in sorted((ref / "snapshots").glob("pricing_*.md")):
         snap_date = date.fromisoformat(snap.stem.removeprefix("pricing_"))
