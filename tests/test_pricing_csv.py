@@ -287,3 +287,102 @@ def test_refresh_matches_compares_long_context_1h_cache_write() -> None:
     }
     assert _matches(db, haiku)
     assert not _matches({**db, "long_context_cache_write_1h_usd_per_mtok": "9"}, haiku)
+
+
+def test_tier_label_with_several_trailing_notes_merges_to_base_model() -> None:
+    noted = SNAPSHOT + (
+        TIER_ROWS.replace(
+            "(for prompts over 100,000 tokens)",
+            "(for prompts over 100,000 tokens) (beta) (preview)",
+        ).replace(
+            "(for prompts up to 100,000 tokens)",
+            "(for prompts up to 100,000 tokens) (beta) (preview)",
+        )
+    )
+    rows = parse_snapshot(noted, ingested_date=date(2026, 9, 3), source_url=SOURCE_URL)
+    haiku = [r for r in rows if r.model.startswith("claude-haiku-5")]
+    assert [r.model for r in haiku] == ["claude-haiku-5-5"]
+    assert haiku[0].model_display_name == "Claude Haiku 5.5"
+    assert haiku[0].long_context_threshold_tokens == 100000
+
+
+def test_non_tier_parenthetical_alone_is_not_a_tier() -> None:
+    from analyze_claude_sessions.pricing import _split_tier
+
+    assert _split_tier("Claude Mythos 5.1 (limited availability)") == (
+        "Claude Mythos 5.1 (limited availability)",
+        None,
+        None,
+    )
+    assert _split_tier("Claude Haiku 5.5 (beta)")[1:] == (None, None)
+    assert _split_tier("Claude Haiku 5.5 (for prompts over 100,000 tokens) (beta)") == (
+        "Claude Haiku 5.5",
+        "over",
+        100000,
+    )
+
+
+def _db_row_for(row: object) -> dict[str, object]:
+    r = row  # PriceRow
+    return {
+        "input_usd_per_mtok": r.base_input_usd_per_mtok,  # type: ignore[attr-defined]
+        "output_usd_per_mtok": r.output_usd_per_mtok,  # type: ignore[attr-defined]
+        "cache_write_usd_per_mtok": r.cache_write_5m_usd_per_mtok,  # type: ignore[attr-defined]
+        "cache_read_usd_per_mtok": r.cache_read_usd_per_mtok,  # type: ignore[attr-defined]
+        "long_context_threshold_tokens": r.long_context_threshold_tokens,  # type: ignore[attr-defined]
+        "long_context_input_usd_per_mtok": r.long_context_base_input_usd_per_mtok,  # type: ignore[attr-defined]
+        "long_context_output_usd_per_mtok": r.long_context_output_usd_per_mtok,  # type: ignore[attr-defined]
+        "long_context_cache_write_usd_per_mtok": r.long_context_cache_write_5m_usd_per_mtok,  # type: ignore[attr-defined]
+        "long_context_cache_write_1h_usd_per_mtok": r.long_context_cache_write_1h_usd_per_mtok,  # type: ignore[attr-defined]
+        "long_context_cache_read_usd_per_mtok": r.long_context_cache_read_usd_per_mtok,  # type: ignore[attr-defined]
+    }
+
+
+def test_matches_null_safety_on_long_context_1h_rate() -> None:
+    from analyze_claude_sessions.pricing_refresh import _matches
+
+    rows = parse_snapshot(
+        SNAPSHOT + TIER_ROWS, ingested_date=date(2026, 9, 3), source_url=SOURCE_URL
+    )
+    by_model = {r.model: r for r in rows}
+    tiered = by_model["claude-haiku-5-5"]
+    plain = by_model["claude-sonnet-5"]
+    key = "long_context_cache_write_1h_usd_per_mtok"
+
+    # both NULL -> match
+    assert plain.long_context_cache_write_1h_usd_per_mtok is None
+    assert _matches(_db_row_for(plain), plain)
+    # NULL in DB vs value in CSV -> no match
+    assert not _matches({**_db_row_for(tiered), key: None}, tiered)
+    # value in DB vs NULL in CSV -> no match
+    assert not _matches({**_db_row_for(plain), key: "1"}, plain)
+    # numerically equal, differently formatted -> match
+    assert _matches({**_db_row_for(tiered), key: "1.000"}, tiered)
+    # differs only in the 1h long rate -> no match
+    assert not _matches({**_db_row_for(tiered), key: "1.5"}, tiered)
+
+
+def test_tracked_snapshots_reproduce_tracked_csv_without_diff() -> None:
+    from analyze_claude_sessions.config import REPO_ROOT
+
+    ref = REPO_ROOT / "data" / "reference"
+    existing = read_csv(ref / "model_pricing.csv")
+    # Snapshots can hold fewer rows than MIN_SNAPSHOT_ROWS; pad with throwaway models.
+    pad = "".join(
+        f"| Claude Pad {n} | $1 / MTok | $1 / MTok | $1 / MTok | $1 / MTok | $1 / MTok |\n"
+        for n in range(5)
+    )
+    for snap in sorted((ref / "snapshots").glob("pricing_*.md")):
+        snap_date = date.fromisoformat(snap.stem.removeprefix("pricing_"))
+        parsed = [
+            r
+            for r in parse_snapshot(
+                snap.read_text(encoding="utf-8").rstrip("\n") + "\n" + pad,
+                ingested_date=snap_date,
+                source_url=SOURCE_URL,
+            )
+            if not r.model.startswith("claude-pad-")
+        ]
+        assert parsed
+        merged, _ = diff_csv(existing, parsed, as_of=snap_date)
+        assert merged == existing, f"{snap.name} no longer reproduces the tracked CSV"
