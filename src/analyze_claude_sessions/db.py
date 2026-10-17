@@ -24,7 +24,8 @@ def apply_migrations(conn: Connection[Any], sql_dir: Path) -> list[str]:
     """Run every ``*.sql`` in *sql_dir* in filename order, recording what was applied.
 
     The scripts are written to be idempotent, so re-running them is safe; the
-    claude.migrations table exists to show *when* each one last changed.
+    claude.migrations table exists to show *when* each one last changed. The table
+    mirrors the current *sql_dir*: rows for files that were removed are pruned.
     """
     files = sorted(sql_dir.glob("*.sql"))
     if not files:
@@ -46,6 +47,10 @@ def apply_migrations(conn: Connection[Any], sql_dir: Path) -> list[str]:
         DO UPDATE SET sha256 = EXCLUDED.sha256, applied_at = now()
         """,
         digests,
+    )
+    conn.execute(
+        "DELETE FROM claude.migrations WHERE filename <> ALL(%s)",
+        ([name for name, _ in digests],),
     )
     conn.commit()
     return [name for name, _ in digests]
