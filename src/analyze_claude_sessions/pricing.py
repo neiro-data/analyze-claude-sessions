@@ -51,7 +51,9 @@ _LONG_PRICE_FIELDS = (
     "long_context_output_usd_per_mtok",
 )
 
-_TIER_RE = re.compile(r"\(for prompts (up to|over) ([\d,]+) tokens\)\s*$", re.IGNORECASE)
+_TIER_RE = re.compile(
+    r"\(for prompts (up to|over) ([\d,]+) tokens\)(?:\s*\([^)]*\))*\s*$", re.IGNORECASE
+)
 
 MIN_SNAPSHOT_ROWS = 5
 
@@ -221,7 +223,7 @@ def parse_snapshot(text: str, *, ingested_date: date, source_url: str) -> list[P
             raise PricingParseError(f"Unparseable price cell in row {cells!r}: {exc}") from exc
         base_name, kind, threshold = _split_tier(display_name)
         price_row = PriceRow(
-            model=normalize_model_id(display_name),
+            model=normalize_model_id(base_name),
             model_display_name=base_name,
             base_input_usd_per_mtok=prices[0],
             cache_write_5m_usd_per_mtok=prices[1],

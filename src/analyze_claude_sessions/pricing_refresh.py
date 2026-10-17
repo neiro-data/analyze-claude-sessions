@@ -111,6 +111,8 @@ def sync_db(
         if existing_row is not None and _matches(existing_row, row):
             skipped.append(model_id)
             continue
+        # Fill-only ON CONFLICT: set threshold + NULL long 1h rate reports tier_drift;
+        # fix that row with a manual UPDATE.
         result = conn.execute(
             """
             INSERT INTO claude.model_pricing
@@ -201,6 +203,10 @@ def _matches(existing_row: Any, row: PriceRow) -> bool:
         and same(
             existing_row["long_context_cache_write_usd_per_mtok"],
             row.long_context_cache_write_5m_usd_per_mtok,
+        )
+        and same(
+            existing_row["long_context_cache_write_1h_usd_per_mtok"],
+            row.long_context_cache_write_1h_usd_per_mtok,
         )
         and same(
             existing_row["long_context_cache_read_usd_per_mtok"],
