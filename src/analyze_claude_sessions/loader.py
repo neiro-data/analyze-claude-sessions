@@ -297,7 +297,11 @@ def load_api_calls(
     csv_id: int | None,
     frame: pl.DataFrame,
 ) -> int:
-    """Stage the frame with COPY, then upsert into claude.api_calls."""
+    """Stage the frame with COPY, then upsert into claude.api_calls.
+
+    Sub-agent rows are linked within this session only; cross-session ones are
+    handled by the global `relink_subagent_calls` after the load loop.
+    """
     if frame.is_empty():
         return 0
 
@@ -383,43 +387,53 @@ def relink_subagent_calls(conn: Connection[Any]) -> int:
     """Move sub-agent api_calls stamped with the main transcript onto their own.
 
     Idempotent and global. Needed because main files are ingested before their
-    sub-agent transcripts exist, and it backfills history. Returns rows moved.
+    sub-agent transcripts exist, and it backfills history. The sub-agent
+    transcript is matched by agent_id across sessions (resumed/forked sessions
+    embed records whose .jsonl lives elsewhere); a same-session match wins, then
+    the lowest transcript_id. A moved row also takes the sub transcript's
+    session_id so api_calls.session_id stays consistent with its transcript.
+
+    The row -> sub transcript mapping is computed once and shared by the delete
+    and the update (one statement). Candidates that duplicate a message_uuid
+    already on the target sub transcript, or another candidate bound for the
+    same (sub transcript, message_uuid), are deleted (lowest call_id of a group
+    is kept), so UNIQUE (transcript_id, message_uuid) is never violated.
+    Returns rows moved.
     """
-    conn.execute(
-        """
-        DELETE FROM claude.api_calls d USING (
-            SELECT a.call_id, st.transcript_id AS sub_id, a.message_uuid
-            FROM claude.api_calls a
-            JOIN claude.transcripts mt
-              ON mt.transcript_id = a.transcript_id AND mt.kind = 'session'
-            JOIN claude.transcripts st
-              ON st.session_id = mt.session_id
-             AND st.kind = 'subagent'
-             AND st.agent_id = 'agent-' || a.agent
-            WHERE a.agent <> 'main'
-        ) m
-        WHERE d.call_id = m.call_id
-          AND EXISTS (
-              SELECT 1 FROM claude.api_calls x
-              WHERE x.transcript_id = m.sub_id AND x.message_uuid = m.message_uuid
-          )
-        """
-    )
     result = conn.execute(
         """
-        UPDATE claude.api_calls u SET transcript_id = m.sub_id
-        FROM (
-            SELECT a.call_id, st.transcript_id AS sub_id
-            FROM claude.api_calls a
-            JOIN claude.transcripts mt
-              ON mt.transcript_id = a.transcript_id AND mt.kind = 'session'
-            JOIN claude.transcripts st
-              ON st.session_id = mt.session_id
-             AND st.kind = 'subagent'
-             AND st.agent_id = 'agent-' || a.agent
-            WHERE a.agent <> 'main'
-        ) m
-        WHERE u.call_id = m.call_id
+        WITH m AS (
+            SELECT c.call_id, c.sub_id, c.sub_session_id,
+                   EXISTS (
+                       SELECT 1 FROM claude.api_calls x
+                       WHERE x.transcript_id = c.sub_id AND x.message_uuid = c.message_uuid
+                   )
+                   OR ROW_NUMBER() OVER (
+                       PARTITION BY c.sub_id, c.message_uuid ORDER BY c.call_id
+                   ) > 1 AS is_dup
+            FROM (
+                SELECT DISTINCT ON (a.call_id)
+                       a.call_id, a.message_uuid,
+                       st.transcript_id AS sub_id, st.session_id AS sub_session_id
+                FROM claude.api_calls a
+                JOIN claude.transcripts mt
+                  ON mt.transcript_id = a.transcript_id AND mt.kind = 'session'
+                JOIN claude.transcripts st
+                  ON st.kind = 'subagent'
+                 AND st.agent_id = 'agent-' || a.agent
+                WHERE a.agent <> 'main'
+                ORDER BY a.call_id, (st.session_id = mt.session_id) DESC, st.transcript_id
+            ) c
+        ),
+        dropped AS (
+            DELETE FROM claude.api_calls d USING m
+            WHERE d.call_id = m.call_id AND m.is_dup
+            RETURNING d.call_id
+        )
+        UPDATE claude.api_calls u
+           SET transcript_id = m.sub_id, session_id = m.sub_session_id
+          FROM m
+         WHERE u.call_id = m.call_id AND NOT m.is_dup
         """
     )
     return int(result.rowcount)
