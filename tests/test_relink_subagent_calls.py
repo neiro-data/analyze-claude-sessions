@@ -221,3 +221,12 @@ def test_relink_cross_session_second_run_is_noop(conn: Connection[Any]) -> None:
     relink_subagent_calls(conn)
     assert relink_subagent_calls(conn) == 0
     assert _rows(conn, agent) == [sub_b]
+
+
+def test_relink_without_any_transcript_stays_on_main(conn: Connection[Any]) -> None:
+    sid_a, main_a, _ = _seed(conn)
+    _seed(conn)  # unrelated session with no matching sub-agent transcript
+    agent = f"x{uuid.uuid4().hex[:12]}"
+    _insert_call(conn, sid_a, main_a, agent, uuid.uuid4())
+    relink_subagent_calls(conn)
+    assert _rows(conn, agent) == [main_a]
