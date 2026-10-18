@@ -15,7 +15,7 @@ ASK_COMPARE_MODELS := all-MiniLM-L6-v2 BAAI/bge-small-en-v1.5 all-mpnet-base-v2
         init-db discover ingest export-parquet stats shell \
         pricing-refresh pricing-sync-db \
         up-grafana dashboard \
-        venv lint fmt typecheck test check ask-stress ask-stress-compare ask-stress-prefetch \
+        venv lint fmt typecheck test check ask-stress ask-stress-compare ask-stress-prefetch ask-eval \
         install-timer uninstall-timer
 
 help: ## Show this help
@@ -115,6 +115,9 @@ ask-stress-prefetch: ## Download the comparison models, one process each (~640 M
 	  echo "prefetching $$m"; \
 	  uv run --group nlp python -c "import sys; from sentence_transformers import SentenceTransformer; SentenceTransformer(sys.argv[1])" "$$m" || exit 1; \
 	done
+
+ask-eval: ## End-to-end ask eval on the live catalog (ARGS='--tune' or '--update-baseline')
+	uv run --group nlp python scripts/ask_eval.py $(ARGS)
 
 # --- scheduling (darwin) -----------------------------------------------------
 install-timer: ## Schedule bin/ingest.sh via launchd, every 30min (darwin only, explicit opt-in)

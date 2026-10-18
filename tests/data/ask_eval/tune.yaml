@@ -1,0 +1,166 @@
+# TUNE split for the end-to-end `ask` eval (see src/analyze_claude_sessions/ask_eval.py).
+# The only set a confidence threshold / gap margin may be chosen on (`scripts/ask_eval.py --tune`).
+# Migrated from the retired nlp_eval.yaml paraphrases / out_of_catalog / near_miss sections
+# (relabelled against the current catalog: 018 added cost, least-used, cache-write rows and
+# optional since/until/project/model/limit filters), plus extra slot cases.
+# Schema: see test.yaml. Fixtures: today=2026-10-18, projects billing-api/dashboard,
+# models claude-sonnet-5-5/claude-opus-5-5.
+
+# how many sessions are there
+- {question: "how many sessions do we have", expect: "how many sessions are there", kind: paraphrase}
+- {question: "total number of sessions", expect: "how many sessions are there", kind: paraphrase}
+- {question: "count all sessions", expect: "how many sessions are there", kind: paraphrase}
+- {question: "session count", expect: "how many sessions are there", kind: paraphrase}
+# how many projects are there
+- {question: "how many projects do we have", expect: "how many projects are there", kind: paraphrase}
+- {question: "total number of projects", expect: "how many projects are there", kind: paraphrase}
+- {question: "count all projects", expect: "how many projects are there", kind: paraphrase}
+- {question: "project count", expect: "how many projects are there", kind: paraphrase}
+# how many transcripts are there
+- {question: "how many transcripts do we have", expect: "how many transcripts are there", kind: paraphrase}
+- {question: "total number of transcripts", expect: "how many transcripts are there", kind: paraphrase}
+- {question: "count all transcripts", expect: "how many transcripts are there", kind: paraphrase}
+# how many subagent transcripts are there
+- {question: "how many subagent transcripts do we have", expect: "how many subagent transcripts are there", kind: paraphrase}
+- {question: "count of subagent transcripts", expect: "how many subagent transcripts are there", kind: paraphrase}
+- {question: "total number of subagent transcripts", expect: "how many subagent transcripts are there", kind: paraphrase}
+# how many api calls are there
+- {question: "how many api calls do we have", expect: "how many api calls are there", kind: paraphrase}
+- {question: "total number of api calls", expect: "how many api calls are there", kind: paraphrase}
+- {question: "count all api calls", expect: "how many api calls are there", kind: paraphrase}
+# how many tokens were spent per model
+- {question: "what is the total tokens per model", expect: "how many tokens were spent per model", kind: paraphrase}
+- {question: "tokens spent per model", expect: "how many tokens were spent per model", kind: paraphrase}
+- {question: "how many tokens did each model use", expect: "how many tokens were spent per model", kind: paraphrase}
+- {question: "total token usage by model", expect: "how many tokens were spent per model", kind: paraphrase}
+- {question: "token counts grouped by model", expect: "how many tokens were spent per model", kind: paraphrase}
+# total tokens per project
+- {question: "tokens used per project", expect: "total tokens per project", kind: paraphrase}
+- {question: "how many tokens per project", expect: "total tokens per project", kind: paraphrase}
+- {question: "total token usage by project", expect: "total tokens per project", kind: paraphrase}
+# total tokens per day
+- {question: "tokens used per day", expect: "total tokens per day", kind: paraphrase}
+- {question: "daily token usage", expect: "total tokens per day", kind: paraphrase}
+- {question: "token usage trend by day", expect: "total tokens per day", kind: paraphrase}
+# tokens by subagent vs main
+- {question: "subagent vs main token split", expect: "tokens by subagent vs main", kind: paraphrase}
+- {question: "how do subagent and main token usage compare", expect: "tokens by subagent vs main", kind: paraphrase}
+- {question: "main vs subagent tokens", expect: "tokens by subagent vs main", kind: paraphrase}
+# top 10 sessions by total tokens
+- {question: "top ten sessions by tokens", expect: "top 10 sessions by total tokens", kind: paraphrase}
+- {question: "which sessions used the most tokens", expect: "top 10 sessions by total tokens", kind: paraphrase}
+- {question: "sessions with the highest token usage", expect: "top 10 sessions by total tokens", kind: paraphrase}
+# top 10 projects by tokens
+- {question: "top ten projects by tokens", expect: "top 10 projects by tokens", kind: paraphrase}
+- {question: "which projects used the most tokens", expect: "top 10 projects by tokens", kind: paraphrase}
+- {question: "projects with the highest token usage", expect: "top 10 projects by tokens", kind: paraphrase}
+# what is the average session duration
+- {question: "average session length", expect: "what is the average session duration", kind: paraphrase}
+- {question: "how long do sessions last on average", expect: "what is the average session duration", kind: paraphrase}
+- {question: "mean session duration", expect: "what is the average session duration", kind: paraphrase}
+# what is the overall cache read percentage
+- {question: "overall cache hit rate", expect: "what is the overall cache read percentage", kind: paraphrase}
+- {question: "what percentage of tokens came from cache", expect: "what is the overall cache read percentage", kind: paraphrase}
+- {question: "cache read percentage overall", expect: "what is the overall cache read percentage", kind: paraphrase}
+# what are the longest gaps between calls
+- {question: "biggest pauses between api calls", expect: "what are the longest gaps between calls", kind: paraphrase}
+- {question: "longest delays between calls", expect: "what are the longest gaps between calls", kind: paraphrase}
+- {question: "largest gaps between consecutive calls", expect: "what are the longest gaps between calls", kind: paraphrase}
+# which model is used most
+- {question: "most used model", expect: "which model is used most", kind: paraphrase}
+- {question: "what model is used the most", expect: "which model is used most", kind: paraphrase}
+- {question: "which model has the most calls", expect: "which model is used most", kind: paraphrase}
+# how many sessions per project
+- {question: "session count per project", expect: "how many sessions per project", kind: paraphrase}
+- {question: "number of sessions by project", expect: "how many sessions per project", kind: paraphrase}
+# output tokens per model
+- {question: "output token usage by model", expect: "output tokens per model", kind: paraphrase}
+- {question: "how many output tokens per model", expect: "output tokens per model", kind: paraphrase}
+# daily api call trend
+- {question: "api calls per day", expect: "daily api call trend", kind: paraphrase}
+- {question: "daily trend of api calls", expect: "daily api call trend", kind: paraphrase}
+# what is the total number of tokens overall
+- {question: "grand total of tokens", expect: "what is the total number of tokens overall", kind: paraphrase}
+- {question: "total tokens across everything", expect: "what is the total number of tokens overall", kind: paraphrase}
+- {question: "overall token total", expect: "what is the total number of tokens overall", kind: paraphrase}
+# cache report
+- {question: "cache report session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "cache report", kind: paraphrase}
+- {question: "cache write read reuse for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "cache report", kind: paraphrase}
+- {question: "per-agent cache report session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "cache report", kind: paraphrase}
+# tokens spent in this session
+- {question: "tokens used in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "tokens spent in this session", kind: paraphrase}
+- {question: "total tokens for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "tokens spent in this session", kind: paraphrase}
+- {question: "how many tokens did session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5 use", expect: "tokens spent in this session", kind: paraphrase}
+# tokens spent per model in this session
+- {question: "tokens per model for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "tokens spent per model in this session", kind: paraphrase}
+- {question: "model breakdown of tokens in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "tokens spent per model in this session", kind: paraphrase}
+# tokens spent per agent in this session
+- {question: "tokens per agent for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "tokens spent per agent in this session", kind: paraphrase}
+- {question: "agent breakdown of tokens in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "tokens spent per agent in this session", kind: paraphrase}
+# number of calls in this session
+- {question: "how many calls in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "number of calls in this session", kind: paraphrase}
+- {question: "call count for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "number of calls in this session", kind: paraphrase}
+# number of calls per agent in this session
+- {question: "calls per agent for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "number of calls per agent in this session", kind: paraphrase}
+- {question: "agent call breakdown in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "number of calls per agent in this session", kind: paraphrase}
+# complete session output ordered by time
+- {question: "full timeline for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "complete session output ordered by time", kind: paraphrase}
+- {question: "chronological call log for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "complete session output ordered by time", kind: paraphrase}
+# session summary
+- {question: "summary for session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "session summary", kind: paraphrase}
+- {question: "token summary of session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "session summary", kind: paraphrase}
+# longest gaps in this session
+- {question: "biggest pauses in session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "longest gaps in this session", kind: paraphrase}
+- {question: "longest delays within session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5", expect: "longest gaps in this session", kind: paraphrase}
+# --- slot (migrated out_of_catalog rows that 018 made answerable) --------------
+- {question: "tokens per model last month", expect: "how many tokens were spent per model", kind: slot, expect_params: ["2026-09-01", "2026-10-01"]}
+- {question: "how many tokens were spent per model since 2026-01", expect: "how many tokens were spent per model", kind: slot, expect_params: ["2026-01-01"]}
+- {question: "tokens per model in the last 7 days", expect: "how many tokens were spent per model", kind: slot, expect_params: ["2026-10-11"]}
+- {question: "top 5 sessions by total tokens", expect: "top 10 sessions by total tokens", kind: slot, expect_params: [5]}
+- {question: "top 20 projects by tokens", expect: "top 10 projects by tokens", kind: slot, expect_params: [20]}
+- {question: "total number of tokens since 2026-08-01", expect: "what is the total number of tokens overall", kind: slot, expect_params: ["2026-08-01"]}
+- {question: "total tokens for project billing-api", expect: "what is the total number of tokens overall", kind: slot, expect_params: ["billing-api"]}
+- {question: "total tokens per day for dashboard last month", expect: "total tokens per day", kind: slot, expect_params: ["dashboard", "2026-09-01", "2026-10-01"]}
+- {question: "what is the cost per model last month", expect: "what is the cost per model", kind: slot, expect_params: ["2026-09-01", "2026-10-01"]}
+- {question: "how much money did I spend for claude-sonnet-5-5", expect: "how much money did I spend in total", kind: slot, expect_params: ["claude-sonnet-5-5"]}
+- {question: "top 10 most expensive sessions since 2026-09-01", expect: "top 10 most expensive sessions", kind: slot, expect_params: [10, "2026-09-01"]}
+- {question: "daily api call trend in the last 30 days", expect: "daily api call trend", kind: slot, expect_params: ["2026-09-18"]}
+# --- unbindable ---------------------------------------------------------------
+- {question: "tokens per model using claude-sonnet-5-5", expect: refuse, kind: unbindable}
+- {question: "which model is used most since 2026-01", expect: refuse, kind: unbindable}
+- {question: "how many sessions are there last month", expect: refuse, kind: unbindable}
+- {question: "average session duration since 2026-05-01", expect: refuse, kind: unbindable}
+- {question: "overall cache read percentage in the last 7 days", expect: refuse, kind: unbindable}
+- {question: "how many projects are there in the last 30 days", expect: refuse, kind: unbindable}
+# --- ood (migrated out_of_catalog + new) ----------------------------------------
+- {question: "what is the weather today", expect: refuse, kind: ood}
+- {question: "how many pull requests were merged last week", expect: refuse, kind: ood}
+- {question: "tell me a joke", expect: refuse, kind: ood}
+- {question: "how do i reset my password", expect: refuse, kind: ood}
+- {question: "which files did claude change most often", expect: refuse, kind: ood}
+- {question: "what is the population of japan", expect: refuse, kind: ood}
+- {question: "list every user prompt", expect: refuse, kind: ood}
+- {question: "how many bugs are open", expect: refuse, kind: ood}
+# --- near_miss (migrated; relabelled against catalog incl. 018) ----------------
+- {question: "the model I use least", expect: "which model is used least", kind: near_miss}
+- {question: "which model is used least", expect: "which model is used least", kind: near_miss}
+- {question: "number of sessions that are not subagent runs", expect: "how many main transcript sessions are there", kind: near_miss}
+- {question: "how many transcripts are not subagent transcripts", expect: refuse, kind: near_miss, note: "main-transcript count is sessions, not transcripts"}
+- {question: "average tokens per call", expect: refuse, kind: near_miss, note: "granularity: per call"}
+- {question: "token usage hourly", expect: refuse, kind: near_miss, note: "granularity: hour"}
+- {question: "cost of this session in dollars", expect: refuse, kind: near_miss, note: "session-scoped row, no session id"}
+- {question: "input token counts per model", expect: refuse, kind: near_miss}
+- {question: "cache write percent", expect: "what is the overall cache write percentage", kind: near_miss}
+- {question: "what have I spent in money so far", expect: "how much money did I spend in total", kind: near_miss}
+- {question: "money spent on each project", expect: "what is the cost per project", kind: near_miss}
+- {question: "what is the cost per call", expect: refuse, kind: near_miss}
+# --- opposite -----------------------------------------------------------------
+- {question: "minimum session duration", expect: refuse, kind: opposite}
+- {question: "smallest delays between calls", expect: refuse, kind: opposite}
+- {question: "fewest tokens per project", expect: refuse, kind: opposite}
+- {question: "bottom 5 sessions by tokens", expect: refuse, kind: opposite}
+# --- typo ---------------------------------------------------------------------
+- {question: "how many sesions per projct", expect: "how many sessions per project", kind: typo}
+- {question: "tokns spent per modl", expect: "how many tokens were spent per model", kind: typo}
+- {question: "what is the cost per modle", expect: "what is the cost per model", kind: typo}
+- {question: "cache report session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5 plz", expect: "cache report", kind: typo}

@@ -30,13 +30,23 @@ import random
 import statistics
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
 import typer
 
+from analyze_claude_sessions.ask_eval import (
+    TEST_PATH,
+    default_retriever_factory,
+    fetch_catalog,
+    load_cases,
+    metrics_by_kind,
+    outcome_counts,
+    run_cases,
+)
+from analyze_claude_sessions.config import get_settings
 from analyze_claude_sessions.nlp import (
     DEFAULT_MODEL_NAME,
     Backend,
@@ -120,6 +130,8 @@ class Report:
     latency_by_size: dict[
         str, tuple[float, float, float]
     ]  # fake backend: label -> (build, p50, p95)
+    # model -> {"outcomes": decision counts, "verdicts": score counts} on the ask_eval test split
+    end_to_end: dict[str, dict[str, dict[str, int]]] = field(default_factory=dict)
 
 
 def _hf_cache_size_mb(model_name: str) -> float | None:
@@ -367,6 +379,48 @@ def run_battery(
     )
 
 
+def end_to_end_summary(model_names: list[str]) -> dict[str, dict[str, dict[str, int]]]:
+    """Per-model decision/verdict counts from `ask_eval` on the live catalog.
+
+    Empty (with a note on stderr) when the database is unreachable: the rest of the
+    battery is model-and-corpus only and must still run without Postgres.
+    """
+    try:
+        examples = fetch_catalog(get_settings().database_url)
+    except Exception as exc:  # psycopg raises its own hierarchy; any failure means "skip"
+        typer.echo(f"End-to-end section skipped (no catalog from the database): {exc}", err=True)
+        return {}
+    cases = load_cases(TEST_PATH)
+    summary: dict[str, dict[str, dict[str, int]]] = {}
+    for name in model_names:
+        scored = run_cases(cases, examples, default_retriever_factory(BACKEND_FACTORY(name)))
+        summary[name] = {
+            "outcomes": outcome_counts(scored),
+            "verdicts": metrics_by_kind(scored)["all"].verdicts,
+        }
+    return summary
+
+
+def _end_to_end_section(report: Report) -> list[str]:
+    lines = ["## End-to-end decision (ask_eval test split)", ""]
+    if not report.end_to_end:
+        return [*lines, "Skipped: no live catalog (run `make up && make init-db`).", ""]
+    for model, counts in report.end_to_end.items():
+        lines += [
+            f"### `{model}`",
+            "",
+            "| outcome | count |",
+            "|---|---|",
+            *(f"| {k} | {v} |" for k, v in counts["outcomes"].items()),
+            "",
+            "| verdict | count |",
+            "|---|---|",
+            *(f"| {k} | {v} |" for k, v in counts["verdicts"].items()),
+            "",
+        ]
+    return lines
+
+
 def _time_search(retriever: CatalogRetriever, query: str) -> float:
     start = time.perf_counter()
     retriever.search(query, top_k=3)
@@ -507,6 +561,7 @@ def render_markdown(report: Report) -> str:
     else:
         lines += _model_sections(report.models[0], "#", include_near_miss=True)
 
+    lines += _end_to_end_section(report)
     lines += [
         "## Guard regressions (`ensure_read_only` mismatches vs pinned expectation)",
         "",
@@ -681,6 +736,8 @@ def main(
     report = run_battery(
         seed=seed, quick=quick, models=model_names, backend_factory=BACKEND_FACTORY
     )
+    if BACKEND_FACTORY is LocalEmbeddingBackend:
+        report.end_to_end = end_to_end_summary(model_names)
     out.mkdir(parents=True, exist_ok=True)
 
     md_path = out / f"ask_stress_{report.timestamp}.md"
