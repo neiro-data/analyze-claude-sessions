@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.4.1...v0.5.0) (2026-10-18)
+
+
+### Features
+
+* price long-context calls at prompt-length tier rates ([1f4a94c](https://github.com/neiro-data/analyze-claude-sessions/commit/1f4a94c1a52eb88d9b98f659fcf923f9f2dc9086))
+* price long-context calls at prompt-length tier rates ([bceb9a4](https://github.com/neiro-data/analyze-claude-sessions/commit/bceb9a49224300dbd3c4b5c14056f35cdbfada6b))
+
+
+### Bug Fixes
+
+* **db:** log pruned migration rows and harden tests ([1933371](https://github.com/neiro-data/analyze-claude-sessions/commit/19333719c9a0376cb6f2dc708eb14fe36a1e0bf2))
+* **db:** prune migration rows for removed sql files ([c68e2c2](https://github.com/neiro-data/analyze-claude-sessions/commit/c68e2c2cb31a06bb07258dac031bd3a3f4885531))
+* **db:** prune migration rows for removed sql files ([4495788](https://github.com/neiro-data/analyze-claude-sessions/commit/4495788e593954c2d9b1e062a627fe0d8922c98d))
+* **loader:** dedupe relink candidates and keep session_id consistent ([65cd9eb](https://github.com/neiro-data/analyze-claude-sessions/commit/65cd9eb291cb0cbd89a643023a26fb3183af8596))
+* **loader:** relink sub-agent calls across sessions ([32a755c](https://github.com/neiro-data/analyze-claude-sessions/commit/32a755c3c9cb15db17fe3cbc894ed39091406c1d))
+* **loader:** relink sub-agent calls across sessions ([8cc00eb](https://github.com/neiro-data/analyze-claude-sessions/commit/8cc00eb830dbf2d2d5c0f64fd2eb1a4aae4dd7ff))
+* **pricing:** compare 1h long-context rate and tolerate extra tier notes ([08584a0](https://github.com/neiro-data/analyze-claude-sessions/commit/08584a054ff8420bb47de4813384c0deb8b5fe91))
+* **pricing:** compare 1h long-context rate and tolerate extra tier notes ([aa20f7f](https://github.com/neiro-data/analyze-claude-sessions/commit/aa20f7f00f8951e1dd636ab956133a3f53b46572))
+
+
+### Documentation
+
+* note claude.migrations mirrors current sql/ directory ([6b4db40](https://github.com/neiro-data/analyze-claude-sessions/commit/6b4db4042590d19d1d4ecda331f375cafe59c5e5))
+* note trailing tier notes are tolerated in pricing-refresh ([0143225](https://github.com/neiro-data/analyze-claude-sessions/commit/0143225330f860163357e6b526feed39fa521666))
+
 ## [0.4.1](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.4.0...v0.4.1) (2026-10-17)
 
 
