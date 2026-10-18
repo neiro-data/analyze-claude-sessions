@@ -263,6 +263,29 @@ def query(
     _render(rows[:limit], f"{len(rows)} rows")
 
 
+def ask_role_privileged(conn: psycopg.Connection[Any]) -> str | None:
+    """Return why the connected role is too privileged for `ask`, else None.
+
+    Flags a superuser or the owner of the `claude` schema (the owner-role
+    fallback when ASK_DATABASE_URL is unset). Read-only catalog query, so it
+    also works for `ask_reader`.
+    """
+    rows = fetch_all(
+        conn,
+        "SELECT r.rolname, r.rolsuper, n.nspowner = r.oid AS owns_claude "
+        "FROM pg_roles r CROSS JOIN pg_namespace n "
+        "WHERE r.rolname = current_user AND n.nspname = 'claude'",
+    )
+    if not rows:
+        return None
+    row = rows[0]
+    if row["rolsuper"]:
+        return f"superuser role {row['rolname']}"
+    if row["owns_claude"]:
+        return f"owner role {row['rolname']}"
+    return None
+
+
 @app.command()
 def ask(
     question: Annotated[str, typer.Argument(help="A natural-language question about the data.")],
@@ -289,7 +312,9 @@ def ask(
     # -transformers) is only required by this command, not the whole CLI.
     try:
         from .nlp import (
+            MAX_LIMIT,
             AskDecision,
+            InvalidSlotError,
             LocalEmbeddingBackend,
             NlpDependencyError,
             UnboundFilterError,
@@ -308,14 +333,15 @@ def ask(
         raise typer.Exit(code=1) from exc
 
     settings = get_settings()
-    if settings.ask_database_url == settings.database_url:
-        console.print(
-            "[dim]ASK_DATABASE_URL is not set: running as the owner role "
-            "(see the read-only role in the README).[/dim]"
-        )
     decision: AskDecision | None = None
     try:
         with connect(settings.ask_database_url) as conn:
+            privileged = ask_role_privileged(conn)
+            if privileged:
+                console.print(
+                    f"[dim]Running as {privileged}; set ASK_DATABASE_URL to the read-only "
+                    "ask_reader role (see the read-only role in the README).[/dim]"
+                )
             rows = fetch_all(
                 conn,
                 "SELECT example_id, question, sql_text, description, tags, slots, paraphrases "
@@ -367,6 +393,8 @@ def ask(
                 raise typer.Exit(code=1)
             if decision.outcome == "unbindable":
                 raise UnboundFilterError(list(decision.unbindable))
+            if decision.slots.get("limit", 0) > MAX_LIMIT:
+                console.print(f"[dim]Showing top {MAX_LIMIT}.[/dim]")
 
             console.print(
                 f"[green]Matched:[/green] {top_example.question} "
@@ -403,6 +431,9 @@ def ask(
         raise typer.Exit(code=1) from exc
     except NlpDependencyError as exc:
         console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    except InvalidSlotError as exc:
+        console.print(f"[red]Refusing:[/red] {exc}.")
         raise typer.Exit(code=1) from exc
     except UnsafeQueryError as exc:
         console.print(f"[red]Refusing to run query: {exc}[/red]")

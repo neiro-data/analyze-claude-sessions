@@ -24,7 +24,8 @@ services:
       - max_wal_size=2GB
     environment: *postgres-env
     ports:
-      - "${POSTGRES_PORT:-55432}:5432"
+      # Loopback only. To expose on the LAN, override deliberately and rotate passwords first.
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Runs once, on an empty volume. `acp init-db` re-applies these any time.

@@ -17,7 +17,9 @@ from typer.testing import CliRunner
 from analyze_claude_sessions import cli as cli_mod
 from analyze_claude_sessions import nlp as nlp_mod
 from analyze_claude_sessions.nlp import (
+    MAX_LIMIT,
     CatalogRetriever,
+    InvalidSlotError,
     LocalEmbeddingBackend,
     NlpDependencyError,
     NlpExample,
@@ -35,6 +37,7 @@ from analyze_claude_sessions.nlp import (
     resolve_ask,
 )
 
+real_ask_role_privileged = cli_mod.ask_role_privileged
 runner = CliRunner()
 
 
@@ -884,6 +887,16 @@ def test_build_params_uses_extracted_value() -> None:
     assert build_params(_limit_example(), {"limit": 5}) == (5,)
 
 
+@pytest.mark.parametrize("bad", [0, -1])
+def test_build_params_rejects_limit_below_one(bad: int) -> None:
+    with pytest.raises(InvalidSlotError):
+        build_params(_limit_example(), {"limit": bad})
+
+
+def test_build_params_clamps_huge_limit() -> None:
+    assert build_params(_limit_example(), {"limit": 99999999999}) == (MAX_LIMIT,)
+
+
 def test_build_params_optional_falls_back_to_default() -> None:
     assert build_params(_limit_example(), {}) == (10,)
 
@@ -997,6 +1010,12 @@ def test_resolve_ask_low_confidence_and_no_examples(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------
 # CLI `ask`
 # --------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_role_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fake `fetch_all` stubs don't know the pg_roles query; test it separately."""
+    monkeypatch.setattr(cli_mod, "ask_role_privileged", lambda conn: None)
 
 
 class _FakeConnection:
@@ -1267,3 +1286,57 @@ def test_every_catalog_row_explains_with_defaults(live_conn: Any) -> None:
         bind = {"session_id": _SESSION_ID}
         params = build_params(example, bind)
         live_conn.execute("EXPLAIN " + example.sql_text, params)
+
+
+def test_ask_cli_refuses_top_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    queries: list[str] = []
+
+    def _fetch_all(conn: Any, sql: str, *a: Any, **k: Any) -> list[dict[str, Any]]:
+        queries.append(sql)
+        if "DISTINCT dir_name" in sql or "DISTINCT model" in sql:
+            return []
+        return [
+            {
+                "example_id": 1,
+                "question": "top sessions by cost",
+                "sql_text": "SELECT 1 FROM claude.sessions LIMIT %s::int",
+                "description": None,
+                "tags": [],
+                "slots": [{"name": "limit", "type": "limit", "default": 10, "optional": True}],
+            }
+        ]
+
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(cli_mod, "fetch_all", _fetch_all)
+    monkeypatch.setattr(
+        nlp_mod,
+        "LocalEmbeddingBackend",
+        lambda: _FakeBackend({"top sessions by cost": [1.0, 0.0]}, default=[1.0, 0.0]),
+    )
+
+    result = runner.invoke(cli_mod.app, ["ask", "top 0 sessions by cost"])
+
+    assert result.exit_code == 1, result.output
+    assert "N" in result.output and "1" in result.output
+    assert not any("LIMIT" in q for q in queries)
+
+
+class _RoleConn:
+    def __init__(self, row: dict[str, Any] | None) -> None:
+        self.row = row
+
+
+@pytest.mark.parametrize(
+    ("row", "expected"),
+    [
+        ({"rolname": "u", "rolsuper": True, "owns_claude": False}, "superuser role u"),
+        ({"rolname": "u", "rolsuper": False, "owns_claude": True}, "owner role u"),
+        ({"rolname": "u", "rolsuper": False, "owns_claude": False}, None),
+        (None, None),
+    ],
+)
+def test_ask_role_privileged(
+    monkeypatch: pytest.MonkeyPatch, row: dict[str, Any] | None, expected: str | None
+) -> None:
+    monkeypatch.setattr(cli_mod, "fetch_all", lambda conn, sql, *a, **k: [row] if row else [])
+    assert real_ask_role_privileged(_RoleConn(row)) == expected  # type: ignore[arg-type]

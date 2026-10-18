@@ -118,6 +118,13 @@ class UnsafeQueryError(ValueError):
     """Raised when a SQL string is not a single, read-only SELECT/WITH statement."""
 
 
+MAX_LIMIT = 1000  # `top N` above this is clamped; far over any per-model/project cardinality
+
+
+class InvalidSlotError(ValueError):
+    """Raised when an extracted slot value is out of range (e.g. `top 0`)."""
+
+
 class UnboundFilterError(ValueError):
     """Raised when the question carries a filter the matched template can't bind.
 
@@ -826,13 +833,19 @@ def build_params(example: NlpExample, slots: dict[str, Any]) -> tuple[Any, ...]:
     Each spec takes the extracted value for its type; an `optional` spec with
     none extracted takes its `default`. A required spec with no value is a
     catalog authoring / user error, raised as `UnboundFilterError` rather than
-    a bare KeyError.
+    a bare KeyError. A `limit` below 1 raises `InvalidSlotError`; one above
+    `MAX_LIMIT` is clamped.
     """
     params: list[Any] = []
     missing: list[str] = []
     for spec in example.slots:
         if spec.type in slots:
-            params.append(slots[spec.type])
+            value = slots[spec.type]
+            if spec.type == "limit":
+                if value < 1:
+                    raise InvalidSlotError(f"top N needs N \u2265 1 (got {value})")
+                value = min(value, MAX_LIMIT)
+            params.append(value)
         elif spec.optional:
             params.append(spec.default)
         else:

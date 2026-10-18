@@ -196,8 +196,12 @@ uv run acp ask "how much money did I spend"   # cost rows; unpriced calls are co
 
 `acp ask` connects with `ASK_DATABASE_URL` (the `ask_reader` role from
 `sql/019_ask_reader_role.sql`: SELECT-only, read-only sessions, 15s statement timeout).
-Rotate its placeholder password after first init. If the variable is unset, `ask` falls back
-to `DATABASE_URL` (the owner role) and prints a one-line dim warning.
+Rotate its placeholder password after first init (`ALTER ROLE ask_reader WITH PASSWORD '…'`,
+likewise for the owner and grafana roles from `sql/007`), then set `ASK_DATABASE_URL` in `.env`.
+Compose publishes postgres on `127.0.0.1` only; exposing it on the LAN is a deliberate override,
+so rotate first. If the connected role is a superuser or owns the `claude` schema (e.g. the
+variable is unset and `ask` falls back to `DATABASE_URL`), `ask` prints a one-line dim warning
+after connecting.
 
 #### End-to-end ask eval
 

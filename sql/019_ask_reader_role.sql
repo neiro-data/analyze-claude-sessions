@@ -7,6 +7,9 @@
 -- below is a placeholder. Rotate it immediately after first init, e.g.:
 --   ALTER ROLE ask_reader WITH PASSWORD '<real-secret>';
 -- and put the real secret in ASK_DATABASE_URL.
+-- The default password is unsafe if the postgres port is reachable from other
+-- machines. docker-compose.yml binds it to 127.0.0.1; if you override that, rotate
+-- this role (and the owner and grafana roles from sql/007) first.
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ask_reader') THEN
