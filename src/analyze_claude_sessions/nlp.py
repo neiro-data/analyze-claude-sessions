@@ -12,10 +12,11 @@ import json
 import os
 import re
 import tempfile
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import numpy as np
 from numpy.typing import NDArray
@@ -47,14 +48,17 @@ _SINCE_DATE_RE = re.compile(r"\bsince\s+(\d{4}-\d{2}(?:-\d{2})?)\b", re.IGNORECA
 #: `last N days` / `last N day` -> a trailing rolling window.
 _LAST_N_DAYS_RE = re.compile(r"\blast\s+(\d+)\s+days?\b", re.IGNORECASE)
 
-#: `last month` -> the previous calendar month (see `_last_calendar_month`).
+#: `last month` -> the previous calendar month (see `_last_calendar_month_range`).
 _LAST_MONTH_RE = re.compile(r"\blast\s+month\b", re.IGNORECASE)
 
 #: `top N` -> a row-count limit.
 _TOP_N_RE = re.compile(r"\btop\s+(\d+)\b", re.IGNORECASE)
 
 #: Slot type names a catalog row may declare and `extract_slots` may emit.
-SLOT_TYPES = ("session_id", "since", "project", "model", "limit")
+#:
+#: `until` is an exclusive end date, emitted only alongside `last month`; every
+#: catalog row that declares `since` also declares `until`.
+SLOT_TYPES = ("session_id", "since", "until", "project", "model", "limit")
 
 #: Default local embedding model; small, CPU-friendly, good general recall.
 DEFAULT_MODEL_NAME = "all-MiniLM-L6-v2"
@@ -101,10 +105,16 @@ class UnboundFilterError(ValueError):
 
 @dataclass(frozen=True)
 class SlotSpec:
-    """A typed filter a catalog row's `sql_text` can bind, in placeholder order."""
+    """A typed filter a catalog row's `sql_text` can bind, in placeholder order.
+
+    An `optional` slot falls back to `default` (typically None, which the SQL
+    turns into "no filter") when the question doesn't carry that filter.
+    """
 
     name: str
     type: str
+    default: Any = None
+    optional: bool = False
 
 
 class Backend(Protocol):
@@ -315,7 +325,15 @@ def load_examples(rows: list[dict[str, Any]]) -> list[NlpExample]:
     for row in rows:
         tags = row.get("tags") or ()
         raw_slots = row.get("slots") or ()
-        slots = tuple(SlotSpec(name=str(s["name"]), type=str(s["type"])) for s in raw_slots)
+        slots = tuple(
+            SlotSpec(
+                name=str(s["name"]),
+                type=str(s["type"]),
+                default=s.get("default"),
+                optional=bool(s.get("optional", False)),
+            )
+            for s in raw_slots
+        )
         examples.append(
             NlpExample(
                 example_id=int(row["example_id"]),
@@ -341,16 +359,16 @@ def extract_session_id(question: str) -> tuple[str | None, str]:
     return slots.get("session_id"), cleaned
 
 
-def _last_calendar_month(today: date) -> date:
-    """First day of the calendar month before *today*'s month.
+def _last_calendar_month_range(today: date) -> tuple[date, date]:
+    """`(since, until)` for the calendar month before *today*'s month.
 
     "last month" means the previous calendar month, not a trailing 30-day
-    window (that's `last N days`). E.g. on any day in March, this returns
-    February 1st.
+    window (that's `last N days`). `until` is exclusive: on any day in March
+    this returns `(Feb 1st, Mar 1st)`.
     """
     first_of_this_month = today.replace(day=1)
     last_day_of_prev_month = first_of_this_month - timedelta(days=1)
-    return last_day_of_prev_month.replace(day=1)
+    return last_day_of_prev_month.replace(day=1), first_of_this_month
 
 
 def extract_slots(
@@ -366,8 +384,9 @@ def extract_slots(
     the next pattern runs, so ranking later sees clean residual text):
     a bare UUID or `session_id=<id>` -> `session_id`; an explicit
     `since YYYY-MM[-DD]` -> `since` (a `date`); `last N days` -> `since`
-    (`today - N days`); `last month` -> `since` (the 1st of the previous
-    calendar month, see `_last_calendar_month`); `top N` -> `limit` (an int,
+    (`today - N days`); `last month` -> `since` + `until` (the 1st of the
+    previous calendar month and the 1st of this one, see
+    `_last_calendar_month_range`); `top N` -> `limit` (an int,
     extracted before the known-value passes below so a project/model
     literally named "top" can't swallow the token first); a whole-token
     match against *known_projects* -> `project`; a whole-token match against
@@ -420,7 +439,7 @@ def extract_slots(
         else:
             last_month_match = _LAST_MONTH_RE.search(remaining)
             if last_month_match:
-                slots["since"] = _last_calendar_month(today)
+                slots["since"], slots["until"] = _last_calendar_month_range(today)
                 remaining = _remove_span(
                     remaining, last_month_match.start(), last_month_match.end()
                 )
@@ -485,6 +504,28 @@ def check_bindable(example: NlpExample, slots: dict[str, Any]) -> list[str]:
     """
     declared_types = {spec.type for spec in example.slots}
     return [name for name in slots if name not in declared_types]
+
+
+def build_params(example: NlpExample, slots: dict[str, Any]) -> tuple[Any, ...]:
+    """Bind *slots* to *example*'s placeholders, in declared slot order.
+
+    Each spec takes the extracted value for its type; an `optional` spec with
+    none extracted takes its `default`. A required spec with no value is a
+    catalog authoring / user error, raised as `UnboundFilterError` rather than
+    a bare KeyError.
+    """
+    params: list[Any] = []
+    missing: list[str] = []
+    for spec in example.slots:
+        if spec.type in slots:
+            params.append(slots[spec.type])
+        elif spec.optional:
+            params.append(spec.default)
+        else:
+            missing.append(spec.type)
+    if missing:
+        raise UnboundFilterError(missing)
+    return tuple(params)
 
 
 def count_placeholders(sql: str) -> int:
@@ -601,3 +642,87 @@ def _blank_string_literals(sql: str) -> str:
     without_dollar_quotes = re.sub(r"\$(\w*)\$.*?\$\1\$", "$$", sql, flags=re.DOTALL)
     without_escaped = without_dollar_quotes.replace("''", "")
     return re.sub(r"'[^']*'", "''", without_escaped)
+
+
+@dataclass(frozen=True)
+class AskDecision:
+    """What `acp ask` decided to do with a question, before touching the database.
+
+    `outcome` is `"accept"` (run `example` with `params`), `"low_confidence"`
+    (best `score` under the threshold; `ranked` holds the candidates),
+    `"unbindable"` (the question's filters `unbindable` aren't declared by
+    `example`), or `"no_examples"` (nothing to match against).
+    """
+
+    outcome: Literal["accept", "low_confidence", "unbindable", "no_examples"]
+    example: NlpExample | None = None
+    score: float = 0.0
+    ranked: tuple[tuple[NlpExample, float], ...] = ()
+    slots: dict[str, Any] = field(default_factory=dict)
+    clean_question: str = ""
+    params: tuple[Any, ...] = ()
+    unbindable: tuple[str, ...] = ()
+
+
+def resolve_ask(
+    question: str,
+    examples: list[NlpExample],
+    retriever_factory: Callable[[list[NlpExample]], CatalogRetriever],
+    *,
+    known_projects: list[str],
+    known_models: list[str],
+    top_k: int,
+    today: date | None = None,
+) -> AskDecision:
+    """Pure core of `acp ask`: slots -> retrieval -> confidence -> bindability -> params.
+
+    No database or console access; *retriever_factory* builds a retriever over
+    the (session-scoped or not) example subset so callers choose the backend.
+
+    Raises:
+        UnboundFilterError: a required slot of the accepted example has no value.
+        UnsafeQueryError: the accepted example's slot count disagrees with its
+            placeholder count.
+    """
+    slots, clean_question = extract_slots(
+        question, known_projects=known_projects, known_models=known_models, today=today
+    )
+    scoped = filter_examples(examples, session_scoped="session_id" in slots)
+    if not scoped:
+        return AskDecision("no_examples", slots=slots, clean_question=clean_question)
+
+    retriever = retriever_factory(scoped)
+    ranked = tuple(retriever.search(clean_question, top_k=top_k))
+    if not ranked:
+        return AskDecision("no_examples", slots=slots, clean_question=clean_question)
+
+    top_example, top_score = ranked[0]
+
+    def decide(
+        outcome: Literal["accept", "low_confidence", "unbindable"], **extra: Any
+    ) -> AskDecision:
+        return AskDecision(
+            outcome,
+            top_example,
+            top_score,
+            ranked,
+            slots,
+            clean_question,
+            **extra,
+        )
+
+    if not retriever.is_confident(top_score):
+        return decide("low_confidence")
+
+    unbindable = check_bindable(top_example, slots)
+    if unbindable:
+        return decide("unbindable", unbindable=tuple(unbindable))
+
+    params = build_params(top_example, slots)
+    n_placeholders = count_placeholders(top_example.sql_text)
+    if len(params) != n_placeholders:
+        raise UnsafeQueryError(
+            f"catalog row {top_example.example_id!r} declares "
+            f"{len(params)} slot(s) but sql_text has {n_placeholders} placeholder(s)"
+        )
+    return decide("accept", params=params)

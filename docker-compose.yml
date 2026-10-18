@@ -53,6 +53,9 @@ services:
     environment:
       DATABASE_URL: >-
         postgresql://${POSTGRES_USER:-claude}:${POSTGRES_PASSWORD:-claude}@postgres:5432/${POSTGRES_DB:-claude_analytics}
+      # After rotating the ask_reader password (sql/019), set ASK_DATABASE_URL in .env.
+      ASK_DATABASE_URL: >-
+        ${ASK_DATABASE_URL:-postgresql://ask_reader:changeme_ask@postgres:5432/${POSTGRES_DB:-claude_analytics}}
       CLAUDE_PROJECTS_DIR: ${CLAUDE_PROJECTS_DIR}
       DATA_DIR: /app/data
       REPORT_SCRIPT: /app/scripts/cache_report_per_call_timing.sh

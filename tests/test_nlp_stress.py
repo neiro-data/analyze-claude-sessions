@@ -137,7 +137,7 @@ def test_extract_slots_today_injection_is_deterministic() -> None:
     assert slots_a == slots_b == {"since": date(2026, 3, 5)}
 
     slots_month, _ = extract_slots("last month", today=fixed_today)
-    assert slots_month == {"since": date(2026, 2, 1)}
+    assert slots_month == {"since": date(2026, 2, 1), "until": date(2026, 3, 1)}
 
 
 # --------------------------------------------------------------------------

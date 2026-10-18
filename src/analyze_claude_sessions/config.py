@@ -36,10 +36,13 @@ class Settings:
     sql_dir: Path
     database_url: str
     nlp_embeddings_cache_dir: Path
+    # Read-only role for `acp ask`; from_env falls back to `database_url`.
+    ask_database_url: str = ""
 
     @classmethod
     def from_env(cls) -> Settings:
         data_dir = _path_env("DATA_DIR", REPO_ROOT / "data")
+        database_url = os.getenv("DATABASE_URL") or _database_url_from_parts()
         return cls(
             projects_dir=_path_env("CLAUDE_PROJECTS_DIR", Path.home() / ".claude" / "projects"),
             data_dir=data_dir,
@@ -50,7 +53,9 @@ class Settings:
             parquet_dir_in_db=os.getenv("PARQUET_DIR_IN_DB", "/parquet"),
             report_script=_path_env("REPORT_SCRIPT", DEFAULT_REPORT_SCRIPT),
             sql_dir=_path_env("SQL_DIR", DEFAULT_SQL_DIR),
-            database_url=os.getenv("DATABASE_URL") or _database_url_from_parts(),
+            database_url=database_url,
+            # Read-only role for `acp ask`; falls back to the owner role.
+            ask_database_url=os.getenv("ASK_DATABASE_URL") or database_url,
             nlp_embeddings_cache_dir=_path_env("NLP_EMBEDDINGS_CACHE_DIR", data_dir / "nlp_cache"),
         )
 

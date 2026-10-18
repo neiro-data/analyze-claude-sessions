@@ -279,17 +279,15 @@ def ask(
     # -transformers) is only required by this command, not the whole CLI.
     try:
         from .nlp import (
+            AskDecision,
             CatalogRetriever,
             LocalEmbeddingBackend,
             NlpDependencyError,
             UnboundFilterError,
             UnsafeQueryError,
-            check_bindable,
-            count_placeholders,
             ensure_read_only,
-            extract_slots,
-            filter_examples,
             load_examples,
+            resolve_ask,
         )
     except ImportError as exc:
         console.print(
@@ -300,8 +298,14 @@ def ask(
         raise typer.Exit(code=1) from exc
 
     settings = get_settings()
+    if settings.ask_database_url == settings.database_url:
+        console.print(
+            "[dim]ASK_DATABASE_URL is not set: running as the owner role "
+            "(see the read-only role in the README).[/dim]"
+        )
+    decision: AskDecision | None = None
     try:
-        with connect(settings.database_url) as conn:
+        with connect(settings.ask_database_url) as conn:
             rows = fetch_all(
                 conn,
                 "SELECT example_id, question, sql_text, description, tags, slots "
@@ -318,14 +322,17 @@ def ask(
                     conn, "SELECT DISTINCT model FROM claude.api_calls WHERE model IS NOT NULL"
                 )
             ]
-            slots, clean_question = extract_slots(
-                question, known_projects=known_projects, known_models=known_models
+            decision = resolve_ask(
+                question,
+                examples,
+                lambda scoped: CatalogRetriever(scoped, LocalEmbeddingBackend()),
+                known_projects=known_projects,
+                known_models=known_models,
+                top_k=top_k,
             )
-            session_id = slots.get("session_id")
-            scoped_examples = filter_examples(examples, session_scoped=session_id is not None)
 
-            if not scoped_examples:
-                if session_id is not None:
+            if decision.outcome == "no_examples":
+                if "session_id" in decision.slots:
                     console.print("[yellow]No session-scoped queries available yet.[/yellow]")
                 else:
                     console.print(
@@ -334,29 +341,24 @@ def ask(
                     )
                 raise typer.Exit(code=1)
 
-            retriever = CatalogRetriever(scoped_examples, LocalEmbeddingBackend())
-            ranked = retriever.search(clean_question, top_k=top_k)
-
-            if not ranked:
-                console.print("[yellow]No curated questions available yet.[/yellow]")
-                raise typer.Exit(code=1)
-
-            top_example, top_score = ranked[0]
-            if not retriever.is_confident(top_score):
+            if decision.outcome == "low_confidence":
                 console.print(
-                    f"[yellow]Not confident enough (best score {top_score:.2f}).[/yellow] "
+                    f"[yellow]Not confident enough (best score {decision.score:.2f}).[/yellow] "
                     "Try rephrasing, or pick one of these:"
                 )
-                for example, score in ranked:
+                for example, score in decision.ranked:
                     console.print(f"  [{score:.2f}] {example.question}")
                 raise typer.Exit(code=1)
 
-            unbindable = check_bindable(top_example, slots)
-            if unbindable:
-                raise UnboundFilterError(unbindable)
+            top_example = decision.example
+            if top_example is None:  # unreachable: only "no_examples" lacks one
+                raise typer.Exit(code=1)
+            if decision.outcome == "unbindable":
+                raise UnboundFilterError(list(decision.unbindable))
 
             console.print(
-                f"[green]Matched:[/green] {top_example.question} [dim](score {top_score:.2f})[/dim]"
+                f"[green]Matched:[/green] {top_example.question} "
+                f"[dim](score {decision.score:.2f})[/dim]"
             )
             if show_sql:
                 console.print(f"[dim]{top_example.sql_text}[/dim]")
@@ -366,29 +368,25 @@ def ask(
             ensure_read_only(top_example.sql_text)
             conn.execute("SET TRANSACTION READ ONLY")
             conn.execute("SET LOCAL statement_timeout = '15s'")
-            # Bind params in the row's declared slot order -- not by repeating
-            # a single value -- so a template with more than one distinct slot
-            # binds correctly. Every declared slot must resolve to an
-            # extracted value: an example that declares a slot type the
-            # question didn't carry is a catalog authoring bug (its filter
-            # would otherwise bind NULL/None), not a user error.
-            params = tuple(slots[spec.type] for spec in top_example.slots)
-            n_placeholders = count_placeholders(top_example.sql_text)
-            if len(params) != n_placeholders:
-                raise UnsafeQueryError(
-                    f"catalog row {top_example.example_id!r} declares "
-                    f"{len(params)} slot(s) but sql_text has {n_placeholders} placeholder(s)"
-                )
-            result_rows = fetch_all(conn, top_example.sql_text, params)
+            result_rows = fetch_all(conn, top_example.sql_text, decision.params)
         _render(result_rows, top_example.question)
     except UnboundFilterError as exc:
-        filters = ", ".join(f"{name} ({slots[name]!r})" for name in exc.unbindable)
+        # Raised either for an extracted filter the match can't bind (`decision`
+        # is set) or by `resolve_ask` for a required slot with no value.
+        if decision is None:
+            console.print(
+                f"[red]Refusing:[/red] the matched query needs {', '.join(exc.unbindable)} "
+                "but your question doesn't give one."
+            )
+            raise typer.Exit(code=1) from exc
+        filters = ", ".join(f"{name} ({decision.slots.get(name)!r})" for name in exc.unbindable)
+        matched = decision.example.question if decision.example else "?"
         console.print(
             f"[red]Refusing:[/red] your question filters by {filters} but the closest "
-            f'match "{top_example.question}" has no such filter. It does not run with the '
+            f'match "{matched}" has no such filter. It does not run with the '
             "filter silently dropped. Try one of these instead:"
         )
-        for example, score in ranked:
+        for example, score in decision.ranked:
             console.print(f"  [{score:.2f}] {example.question}")
         raise typer.Exit(code=1) from exc
     except NlpDependencyError as exc:
