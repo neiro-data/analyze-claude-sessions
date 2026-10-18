@@ -11,7 +11,7 @@ current run's numbers as the baseline for comparing future retrieval changes
 against (see plan-nlp-slot-aware-matching.md).
 
 The `near_miss` section of the eval YAML is not read here; it is consumed by
-`scripts/rag_stress.py`.
+`scripts/ask_stress.py`.
 """
 
 from __future__ import annotations

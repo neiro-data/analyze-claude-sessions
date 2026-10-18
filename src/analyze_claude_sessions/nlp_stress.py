@@ -505,7 +505,7 @@ def _random_uuid(rng: random.Random) -> str:
 # ---------------------------------------------------------------------------
 # Shared measurement helpers
 #
-# Used by BOTH tests/test_nlp_stress_slow.py and scripts/rag_stress.py. They
+# Used by BOTH tests/test_nlp_stress_slow.py and scripts/ask_stress.py. They
 # live here rather than being copy-pasted into each caller so the test suite and
 # the generated report can never disagree about what "recall@1" means.
 # ---------------------------------------------------------------------------

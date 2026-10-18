@@ -191,7 +191,7 @@ out_of_catalog:
 # Questions that look like a catalog row (`decoy`, an exact `catalog` key) but
 # that no catalog row answers. A confident match to the decoy is a wrong
 # accept. `kind` is one of: antonym, negation, read_write_swap, granularity,
-# cost_vs_tokens. Consumed by scripts/rag_stress.py only (tests/test_nlp_eval.py
+# cost_vs_tokens. Consumed by scripts/ask_stress.py only (tests/test_nlp_eval.py
 # ignores it). Never used to tune a threshold -- held-out check. Trailing
 # comments are the observed all-MiniLM-L6-v2 top-1 score.
 near_miss:

@@ -1,4 +1,4 @@
--- Offline NLP / RAG layer: a curated question -> SQL catalog plus a schema
+-- Offline semantic query catalog: a curated question -> SQL catalog plus a schema
 -- navigation view, both idempotent so `acp init-db` can replay this safely.
 --
 -- claude.nlp_examples is the retrieval corpus for `acp ask`: local sentence
