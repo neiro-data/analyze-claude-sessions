@@ -105,20 +105,20 @@
 - {question: "cost of each model in dollars", expect: "what is the cost per model", kind: near_miss, note: "money vs tokens"}
 - {question: "cost per day in dollars", expect: "what is the cost per day", kind: near_miss, note: "money vs tokens"}
 - {question: "how many main transcripts", expect: "how many main transcript sessions are there", kind: near_miss, note: "main vs all transcripts"}
-- {question: "number of output tokens per project", expect: refuse, kind: near_miss, note: "output tokens exist per model, not per project"}
-- {question: "average session cost", expect: refuse, kind: near_miss, note: "cost exists per session (one) and top-N, no average"}
-- {question: "cache read percentage per model", expect: refuse, kind: near_miss, note: "cache % exists only overall"}
-- {question: "what is the average duration of a subagent transcript", expect: refuse, kind: near_miss, note: "average duration exists per session only"}
+- {question: "number of output tokens per project", expect: "what are the output tokens per project", kind: near_miss, note: "answerable since sql/022"}
+- {question: "average session cost", expect: "what is the average cost per session", kind: near_miss, note: "answerable since sql/022"}
+- {question: "cache read percentage per model", expect: "what is the cache read percentage per model", kind: near_miss, note: "answerable since sql/022"}
+- {question: "what is the average duration of a subagent transcript", expect: "what is the average subagent transcript duration", kind: near_miss, note: "answerable since sql/022"}
 - {question: "how many projects per session", expect: refuse, kind: near_miss, note: "reversed grouping of sessions per project"}
-- {question: "number of calls per project", expect: refuse, kind: near_miss, note: "calls per agent/day exist, not per project"}
-- {question: "tokens per hour", expect: refuse, kind: near_miss, note: "granularity: day, not hour"}
-- {question: "tokens per week", expect: refuse, kind: near_miss, note: "granularity: day, not week"}
-- {question: "cost per hour", expect: refuse, kind: near_miss, note: "granularity: day, not hour"}
-- {question: "input tokens per model", expect: refuse, kind: near_miss, note: "output tokens per model exists; input alone does not"}
+- {question: "number of calls per project", expect: "how many api calls per project", kind: near_miss, note: "answerable since sql/022"}
+- {question: "tokens per hour", expect: "tokens per hour", kind: near_miss, note: "answerable since sql/022"}
+- {question: "tokens per week", expect: "tokens per week", kind: near_miss, note: "answerable since sql/022"}
+- {question: "cost per hour", expect: "cost per hour", kind: near_miss, note: "answerable since sql/022"}
+- {question: "input tokens per model", expect: "what are the input tokens per model", kind: near_miss, note: "answerable since sql/022"}
 # --- opposite: antonyms / inversions ------------------------------------------
 - {question: "least used model", expect: "which model is used least", kind: opposite}
 - {question: "which model gets the fewest calls", expect: "which model is used least", kind: opposite}
-- {question: "what is the shortest session duration", expect: refuse, kind: opposite, note: "average exists; shortest does not"}
+- {question: "what is the shortest session duration", expect: "what is the shortest session duration", kind: opposite, note: "answerable since sql/022"}
 - {question: "what are the shortest gaps between calls", expect: refuse, kind: opposite}
 - {question: "which sessions used the fewest tokens", expect: refuse, kind: opposite, note: "top-N is highest only"}
 - {question: "cheapest sessions", expect: refuse, kind: opposite}

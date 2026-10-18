@@ -147,15 +147,15 @@
 - {question: "number of sessions that are not subagent runs", expect: "how many main transcript sessions are there", kind: near_miss}
 - {question: "how many transcripts are not subagent transcripts", expect: refuse, kind: near_miss, note: "main-transcript count is sessions, not transcripts"}
 - {question: "average tokens per call", expect: refuse, kind: near_miss, note: "granularity: per call"}
-- {question: "token usage hourly", expect: refuse, kind: near_miss, note: "granularity: hour"}
+- {question: "token usage hourly", expect: "tokens per hour", kind: near_miss, note: "answerable since sql/022"}
 - {question: "cost of this session in dollars", expect: refuse, kind: near_miss, note: "session-scoped row, no session id"}
-- {question: "input token counts per model", expect: refuse, kind: near_miss}
+- {question: "input token counts per model", expect: "what are the input tokens per model", kind: near_miss, note: "answerable since sql/022"}
 - {question: "cache write percent", expect: "what is the overall cache write percentage", kind: near_miss}
 - {question: "what have I spent in money so far", expect: "how much money did I spend in total", kind: near_miss}
 - {question: "money spent on each project", expect: "what is the cost per project", kind: near_miss}
 - {question: "what is the cost per call", expect: refuse, kind: near_miss}
 # --- opposite -----------------------------------------------------------------
-- {question: "minimum session duration", expect: refuse, kind: opposite}
+- {question: "minimum session duration", expect: "what is the shortest session duration", kind: opposite, note: "answerable since sql/022"}
 - {question: "smallest delays between calls", expect: refuse, kind: opposite}
 - {question: "fewest tokens per project", expect: refuse, kind: opposite}
 - {question: "bottom 5 sessions by tokens", expect: refuse, kind: opposite}
@@ -195,3 +195,13 @@
 - {question: "least expensive sessions", expect: refuse, kind: opposite}
 - {question: "shortest gaps between api calls", expect: refuse, kind: opposite}
 - {question: "which model gets used the fewest times by tokens", expect: refuse, kind: opposite}
+# --- added for sql/022: antonym / granularity neighbours of the new rows --------
+- {question: "maximum session duration", expect: "what is the longest session duration", kind: opposite, note: "longest vs shortest"}
+- {question: "how long does the lengthiest session run", expect: "what is the longest session duration", kind: opposite}
+- {question: "briefest session length", expect: "what is the shortest session duration", kind: opposite}
+- {question: "hourly spend", expect: "cost per hour", kind: near_miss, note: "hour vs day"}
+- {question: "cost per week", expect: refuse, kind: near_miss, note: "weekly cost has no row"}
+- {question: "tokens per month", expect: refuse, kind: near_miss, note: "granularity: month has no row"}
+- {question: "average cost per project", expect: refuse, kind: near_miss, note: "total per project exists; average does not"}
+- {question: "output tokens per day", expect: refuse, kind: near_miss, note: "daily output-only has no row"}
+- {question: "completion tokens per project", expect: "what are the output tokens per project", kind: near_miss, note: "answerable since sql/022"}
