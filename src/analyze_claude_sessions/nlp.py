@@ -109,6 +109,32 @@ _FORBIDDEN_FUNCTIONS = (
     "pg_reload_conf",
 )
 
+#: Function-name prefixes blocked for the same reason: lock-taking, filesystem and
+#: large-object access, query-from-string (bypasses the AST check), and replication.
+_FORBIDDEN_FUNCTION_PREFIXES = (
+    "pg_advisory",
+    "pg_try_advisory",
+    "pg_sleep",
+    "pg_read_",
+    "pg_ls_",
+    "pg_stat_file",
+    "pg_logdir_ls",
+    "pg_file_",
+    "pg_logical",
+    "pg_replication",
+    "pg_notify",
+    "pg_switch_wal",
+    "lo_",
+    "loread",
+    "lowrite",
+    "dblink",
+    "query_to_xml",
+    "table_to_xml",
+    "schema_to_xml",
+    "database_to_xml",
+    "cursor_to_xml",
+)
+
 
 class NlpDependencyError(RuntimeError):
     """Raised when the optional NLP dependency group is not installed."""
@@ -952,7 +978,9 @@ def ensure_read_only(sql: str) -> None:
         )
     for func_name in inspector.func_names:
         unqualified = func_name.rsplit(".", 1)[-1].lower()
-        if unqualified in _FORBIDDEN_FUNCTIONS:
+        if unqualified in _FORBIDDEN_FUNCTIONS or unqualified.startswith(
+            _FORBIDDEN_FUNCTION_PREFIXES
+        ):
             raise UnsafeQueryError(f"Forbidden function in query: {func_name}")
 
 

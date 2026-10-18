@@ -9,10 +9,11 @@ from typing import Annotated, Any
 import psycopg
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from . import __version__
-from .config import REPO_ROOT, get_settings
+from .config import REPO_ROOT, Settings, get_settings
 from .db import apply_migrations, connect, fetch_all, finish_run, start_run
 from .discovery import discover_transcripts
 from .parquet_export import DEFAULT_RELATIONS, ensure_extension, export_relation
@@ -302,6 +303,17 @@ def ask(
             help="Demote catalog rows that say the opposite (least/most, read/write, ...).",
         ),
     ] = True,
+    llm: Annotated[
+        bool,
+        typer.Option("--llm", help="Opt in: let Claude write the SQL (needs the 'llm' group)."),
+    ] = False,
+    summarize: Annotated[
+        bool,
+        typer.Option(
+            "--summarize",
+            help="With --llm: LLM summary; sends up to 50 result rows to the Anthropic API.",
+        ),
+    ] = False,
 ) -> None:
     """Answer a question by matching it to curated SQL and running it read-only.
 
@@ -333,6 +345,9 @@ def ask(
         raise typer.Exit(code=1) from exc
 
     settings = get_settings()
+    if llm:
+        _ask_llm(question, settings, execute=execute, summarize=summarize)
+        return
     decision: AskDecision | None = None
     try:
         with connect(settings.ask_database_url) as conn:
@@ -442,6 +457,84 @@ def ask(
         # A bad session_id (e.g. a value that fails the uuid cast) or any other
         # database error surfaces as a friendly message, not a raw traceback.
         console.print(f"[red]Query failed:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+def _ask_llm(question: str, settings: Settings, *, execute: bool, summarize: bool) -> None:
+    """`acp ask --llm`: retrieve examples + schema, let Claude write SQL, run it as ask_reader."""
+    from . import llm as llm_mod
+    from .nlp import (
+        LocalEmbeddingBackend,
+        NlpDependencyError,
+        UnsafeQueryError,
+        ensure_read_only,
+        hybrid_retriever_factory,
+        load_examples,
+    )
+
+    if not settings.ask_database_url_explicit:
+        console.print(
+            "[red]--llm needs ASK_DATABASE_URL set to the read-only ask_reader role[/red] "
+            "(no owner-role fallback in this mode)."
+        )
+        raise typer.Exit(code=1)
+    if not settings.anthropic_api_key_set:
+        console.print("[red]--llm needs ANTHROPIC_API_KEY in the environment (.env).[/red]")
+        raise typer.Exit(code=1)
+    try:
+        client = llm_mod.make_client()
+        # Phase 1: read-only context fetch. The connection closes before the API call so no
+        # transaction idles (or holds a snapshot) while Claude generates.
+        with connect(settings.ask_database_url) as conn:
+            # Read-only and the timeout must be the first statements of the transaction.
+            conn.execute("SET TRANSACTION READ ONLY")
+            conn.execute("SET LOCAL statement_timeout = '15s'")
+            privileged = ask_role_privileged(conn)
+            if privileged:
+                console.print(
+                    f"[red]--llm refuses to run as {privileged}[/red]: "
+                    "point ASK_DATABASE_URL at the ask_reader role."
+                )
+                raise typer.Exit(code=1)
+            examples = load_examples(
+                fetch_all(
+                    conn,
+                    "SELECT example_id, question, sql_text, description, tags, slots, paraphrases "
+                    "FROM claude.nlp_examples",
+                )
+            )
+            ranked = hybrid_retriever_factory(LocalEmbeddingBackend())(examples).search(
+                question, top_k=llm_mod.EXAMPLES_K
+            )
+            schema_rows = fetch_all(
+                conn,
+                "SELECT object_name, object_type, column_name, data_type, column_comment "
+                "FROM claude.v_schema_catalog",
+            )
+        context = llm_mod.build_context(question, ranked, schema_rows)
+        sql = llm_mod.generate_sql(client, settings.ask_llm_model, question, context)
+        console.print(f"[green]Generated SQL[/green] [dim]({settings.ask_llm_model})[/dim]")
+        console.print(f"[dim]{escape(sql)}[/dim]")
+        if not execute:
+            return
+        ensure_read_only(sql)
+        # Phase 2: run it in a fresh read-only transaction.
+        with connect(settings.ask_database_url) as conn:
+            conn.execute("SET TRANSACTION READ ONLY")
+            conn.execute("SET LOCAL statement_timeout = '15s'")
+            # No params: fetch_all would pass () and psycopg then rejects a literal `%`.
+            rows = [dict(r) for r in conn.execute(sql).fetchall()]
+        _render(rows, question)
+        if summarize and rows:
+            console.print(escape(llm_mod.summarize(client, settings.ask_llm_model, question, rows)))
+    except (llm_mod.LlmError, NlpDependencyError) as exc:
+        console.print(f"[red]{escape(str(exc))}[/red]")
+        raise typer.Exit(code=1) from exc
+    except UnsafeQueryError as exc:
+        console.print(f"[red]Refusing to run generated query: {escape(str(exc))}[/red]")
+        raise typer.Exit(code=1) from exc
+    except psycopg.Error as exc:
+        console.print(f"[red]Query failed:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
 

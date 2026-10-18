@@ -38,6 +38,11 @@ class Settings:
     nlp_embeddings_cache_dir: Path
     # Read-only role for `acp ask`; from_env falls back to `database_url`.
     ask_database_url: str = ""
+    # `acp ask --llm`: model alias and whether a key is set (the key itself is never stored).
+    ask_llm_model: str = "claude-opus-5-5"
+    # True only when ASK_DATABASE_URL is set in the environment (not the owner-URL fallback).
+    ask_database_url_explicit: bool = False
+    anthropic_api_key_set: bool = False
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -57,6 +62,9 @@ class Settings:
             # Read-only role for `acp ask`; falls back to the owner role.
             ask_database_url=os.getenv("ASK_DATABASE_URL") or database_url,
             nlp_embeddings_cache_dir=_path_env("NLP_EMBEDDINGS_CACHE_DIR", data_dir / "nlp_cache"),
+            ask_database_url_explicit=bool(os.getenv("ASK_DATABASE_URL")),
+            ask_llm_model=os.getenv("ACP_ASK_LLM_MODEL") or "claude-opus-5-5",
+            anthropic_api_key_set=bool(os.getenv("ANTHROPIC_API_KEY")),
         )
 
     def ensure_dirs(self) -> None:

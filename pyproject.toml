@@ -30,6 +30,9 @@ dev = [
     "ruff>=0.9",
     "types-pyyaml>=6.0.12.20260815",
 ]
+llm = [
+    "anthropic>=1.15.0",
+]
 nlp = [
     "numpy>=2.5.2",
     "sentence-transformers>=6.0.0",
