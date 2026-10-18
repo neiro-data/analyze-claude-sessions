@@ -203,6 +203,22 @@ so rotate first. If the connected role is a superuser or owns the `claude` schem
 variable is unset and `ask` falls back to `DATABASE_URL`), `ask` prints a one-line dim warning
 after connecting.
 
+#### LLM mode (RAG, opt-in)
+
+`acp ask --llm "cost per model last week"` retrieves the top 5 catalog examples plus the
+`claude.v_schema_catalog` rows they (or your question) mention, and asks Claude to write one
+SELECT. The SQL is always printed, checked by `ensure_read_only`, capped with `LIMIT 200`,
+then run under `ask_reader`. The generated SQL may read only `claude.*` objects that were shown
+to the model (schema block or retrieved examples), never raw upload tables. `--summarize` adds
+a short LLM summary and **sends up to 50 result rows to the Anthropic API**;
+`--no-execute` stops after printing the SQL. Only the question, catalog examples and schema
+leave your machine otherwise.
+
+Needs `uv sync --group llm --group nlp`, `ANTHROPIC_API_KEY`, and an explicit
+`ASK_DATABASE_URL` (no owner-role fallback here). Model: `ACP_ASK_LLM_MODEL`
+(default `claude-opus-5-5`). Missing key or package is an error, never a silent fallback to
+template matching. Plain `acp ask` never calls the API.
+
 #### End-to-end ask eval
 
 ```bash

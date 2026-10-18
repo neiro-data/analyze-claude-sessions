@@ -107,6 +107,7 @@ matching them against a curated SQL catalog with local sentence embeddings — f
 no API key. It matches your question to a curated catalog of SQL queries and runs the
 matched query. It does not generate SQL. It needs the optional `nlp` dependency group (`uv sync --group nlp`). A separate
 opt-in stress suite checks retrieval quality and robustness.
+An opt-in `--llm` mode lets Claude write the SQL instead (see the guide). `--summarize` sends up to 50 result rows to the Anthropic API.
 
 See **[scripts-guide.md — Natural-language queries](scripts-guide.md#wip-natural-language-queries-acp-ask)** for commands and
 how the matching works.
