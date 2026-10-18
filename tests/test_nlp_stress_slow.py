@@ -29,6 +29,8 @@ from analyze_claude_sessions.nlp_stress import (
     FakeHashBackend,
     build_catalog_examples,
     load_yaml,
+    near_miss_cases,
+    operating_point,
     paraphrase_pairs,
     percentiles,
     score_pairs,
@@ -274,3 +276,27 @@ def test_real_backend_batch_vs_single_encode_consistent() -> None:
     singles = [backend.encode([t])[0] for t in texts]
     for batch_row, single_row in zip(batch, singles, strict=True):
         assert batch_row == pytest.approx(single_row, abs=1e-4)
+
+
+# --------------------------------------------------------------------------
+# Near-miss wrong-accept rate (report only, no quality gate)
+# --------------------------------------------------------------------------
+
+
+def test_near_miss_report(
+    retriever: CatalogRetriever, eval_data: dict[str, Any], stress_data: dict[str, Any]
+) -> None:
+    """Prints the near-miss wrong-accept rate at 0.5 and at t*; asserts it computes only."""
+    cases = near_miss_cases(eval_data)
+    assert cases
+    nm_scores = [retriever.search(c.question, top_k=1)[0][1] for c in cases]
+    ooc_scores = [
+        ranked[0][1] if (ranked := retriever.search(item["question"], top_k=1)) else -1.0
+        for item in stress_data["out_of_catalog"]
+    ]
+    t_star = operating_point([], ooc_scores)
+    rate_default = sum(1 for sc in nm_scores if retriever.is_confident(sc)) / len(nm_scores)
+    rate_op = sum(1 for sc in nm_scores if sc >= t_star) / len(nm_scores)
+    print(f"\nnear-miss wrong-accept: at 0.5={rate_default:.3f}  at t*={t_star:.3f}: {rate_op:.3f}")
+    assert 0.0 <= rate_default <= 1.0
+    assert 0.0 <= rate_op <= 1.0

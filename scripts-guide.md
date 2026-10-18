@@ -188,7 +188,8 @@ Loads the real embedding model against `tests/data/nlp_eval.yaml` (paraphrases p
 entry, plus out-of-catalog questions) and prints recall@1, recall@3, and a false-accept
 rate. Marked `slow` and excluded from `make check` / the default `pytest` run since it loads
 a real model; run it by hand when changing retrieval and compare against the last printed
-numbers.
+numbers. The eval YAML also has a `near_miss` section (questions that look like a catalog
+row but that no row answers); it is ignored here and used by `scripts/rag_stress.py`.
 
 #### RAG stress suite (opt-in)
 
@@ -210,6 +211,45 @@ uv run --group nlp python scripts/rag_stress.py --quick    # small/fast sanity r
 or `make rag-stress` for the full report. It's excluded from `make check` and the default
 `pytest` run — same reasons as the eval above — and its reports (`data/reports/`) are
 gitignored scratch output, not tracked artifacts.
+
+**Comparing embedding models.** `scripts/rag_stress.py` runs the retrieval part of the
+battery for one or more local sentence-transformers models:
+
+```bash
+make rag-stress-prefetch                                   # one-time download, one process per model
+make rag-stress-compare                                    # --compare: MiniLM, bge-small, mpnet
+make rag-stress RAG_MODELS="BAAI/bge-small-en-v1.5"        # extra model(s) via the Makefile
+uv run --group nlp python scripts/rag_stress.py -m all-mpnet-base-v2 -m BAAI/bge-small-en-v1.5
+```
+
+`--model/-m` is repeatable (order kept, duplicates dropped); with no flags only
+`all-MiniLM-L6-v2` runs, as before. Downloads are about 90 MB (MiniLM), 130 MB (bge-small)
+and 420 MB (mpnet). A multi-model run refuses to start (exit code 2) if any model is not
+cached and `HF_HUB_OFFLINE` is not set yourself, because the backend flips the process
+offline after the first cached load; run `make rag-stress-prefetch` first. Models load one
+at a time and are released before the next.
+
+The report has a comparison table (one row per model), a per-model near-miss table, then
+per-model detail sections; guard, slot-fuzz and fake-backend latency sections run once.
+Metrics:
+
+- **Near-miss wrong-accept rate**: share of `near_miss` questions whose top-1 score clears
+  the threshold. Nothing in the catalog answers them, so any accept is wrong.
+- **Operating point `t*`**: the lowest threshold with out-of-catalog false-accept <= 10%,
+  computed exactly from the out-of-catalog top-1 scores (`n_ooc` is shown; with a small set
+  it is coarse). It is what you would set as that model's `CONFIDENCE_THRESHOLD`. Reported
+  at `t*`: accept rate and near-miss wrong-accept. Near-miss rows never tune `t*`.
+- **Separation AUC**: probability that a correct in-catalog top-1 scores above an
+  out-of-catalog or near-miss top-1 (ties count 0.5). Threshold-free.
+- A fixed 0.5 is not used to rank models: it is tuned for MiniLM and bge scores sit higher.
+  The 0.5 numbers are kept, labelled as the current `CONFIDENCE_THRESHOLD`. Multi-model
+  runs sweep 0.30-0.95; single-model runs keep 0.30-0.75.
+- bge runs **without** its query instruction prefix: that prefix targets short-query to
+  long-passage retrieval, while here both sides are short questions, and `CatalogRetriever`
+  encodes both sides identically. A query-prefix variant is a possible follow-up.
+
+The CSV now starts with a `model` column (`model, section, key, metric, value`); rows for
+the model-independent sections use `model="-"`.
 
 ## Upgrading from `analyze-claude-projects`
 

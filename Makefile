@@ -5,13 +5,17 @@ RUN := $(COMPOSE) run --rm app
 # Absolute path; docker-compose cannot expand `~`.
 export CLAUDE_PROJECTS_DIR ?= $(HOME)/.claude/projects
 
+# Extra models for `make rag-stress` (space-separated); empty = default model only.
+RAG_MODELS ?=
+RAG_COMPARE_MODELS := all-MiniLM-L6-v2 BAAI/bge-small-en-v1.5 all-mpnet-base-v2
+
 .DEFAULT_GOAL := help
 
 .PHONY: help env build build-db up down destroy logs ps psql \
         init-db discover ingest export-parquet stats shell \
         pricing-refresh pricing-sync-db \
         up-grafana dashboard \
-        venv lint fmt typecheck test check rag-stress \
+        venv lint fmt typecheck test check rag-stress rag-stress-compare rag-stress-prefetch \
         install-timer uninstall-timer
 
 help: ## Show this help
@@ -101,7 +105,16 @@ test: ## pytest
 check: lint typecheck test ## Everything CI would run
 
 rag-stress: ## Run the real-model RAG stress battery, write a timestamped report to data/reports/
-	uv run --group nlp python scripts/rag_stress.py
+	uv run --group nlp python scripts/rag_stress.py $(foreach m,$(RAG_MODELS),--model $(m))
+
+rag-stress-compare: ## Compare MiniLM, bge-small and mpnet (run rag-stress-prefetch first)
+	uv run --group nlp python scripts/rag_stress.py --compare
+
+rag-stress-prefetch: ## Download the comparison models, one process each (~640 MB total)
+	@for m in $(RAG_COMPARE_MODELS); do \
+	  echo "prefetching $$m"; \
+	  uv run --group nlp python -c "import sys; from sentence_transformers import SentenceTransformer; SentenceTransformer(sys.argv[1])" "$$m" || exit 1; \
+	done
 
 # --- scheduling (darwin) -----------------------------------------------------
 install-timer: ## Schedule bin/ingest.sh via launchd, every 30min (darwin only, explicit opt-in)
