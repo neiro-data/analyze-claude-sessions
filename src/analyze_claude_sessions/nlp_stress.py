@@ -315,6 +315,8 @@ class SqlCase:
     sql: str
     expect_allow: bool
     note: str = ""
+    #: Pinned as a guard hole that is allowed today (reported, never a regression).
+    known_bypass: bool = False
 
 
 SQL_ADVERSARIAL_CORPUS: tuple[SqlCase, ...] = (
@@ -510,6 +512,65 @@ def _random_uuid(rng: random.Random) -> str:
 
 CONFIDENCE_SWEEP: tuple[float, ...] = tuple(round(0.30 + 0.05 * i, 2) for i in range(10))
 """Confidence thresholds swept by the stress battery: 0.30 .. 0.75 step 0.05."""
+
+COMPARISON_SWEEP: tuple[float, ...] = tuple(round(0.30 + 0.05 * i, 2) for i in range(14))
+"""Wider sweep (0.30 .. 0.95) used when comparing several embedding models."""
+
+NEAR_MISS_KINDS: frozenset[str] = frozenset(
+    {"antonym", "negation", "read_write_swap", "granularity", "cost_vs_tokens"}
+)
+
+
+@dataclass(frozen=True)
+class NearMissCase:
+    """A question that looks like a catalog row (`decoy`) but that no row answers."""
+
+    question: str
+    decoy: str
+    kind: str
+
+
+def near_miss_cases(eval_data: dict[str, Any]) -> list[NearMissCase]:
+    """Near-miss cases from an eval corpus (`[]` if the `near_miss` key is absent)."""
+    return [
+        NearMissCase(question=item["question"], decoy=item["decoy"], kind=item["kind"])
+        for item in eval_data.get("near_miss") or []
+    ]
+
+
+def operating_point(
+    in_scores: list[tuple[float, bool]],
+    ooc_scores: list[float],
+    max_fa: float = 0.10,
+) -> float:
+    """Lowest threshold whose out-of-catalog false-accept rate is <= `max_fa`.
+
+    Computed exactly from the out-of-catalog top-1 scores: with
+    `allowed = floor(max_fa * n)`, the result is the (allowed+1)-th highest
+    score plus 1e-6, so at most `allowed` out-of-catalog rows score >= it.
+    `in_scores` is accepted for call-site symmetry but deliberately unused:
+    only out-of-catalog rows tune the threshold. Near-miss rows must never be
+    passed here.
+    """
+    del in_scores
+    if not ooc_scores:
+        raise ValueError("cannot compute an operating point without out-of-catalog scores")
+    allowed = int(max_fa * len(ooc_scores) + 1e-9)
+    if allowed >= len(ooc_scores):
+        return min(ooc_scores)
+    ordered = sorted(ooc_scores, reverse=True)
+    return ordered[allowed] + 1e-6
+
+
+def separation_auc(pos: list[float], neg: list[float]) -> float:
+    """Mann-Whitney AUC: P(random positive scores above random negative), ties = 0.5."""
+    if not pos or not neg:
+        raise ValueError("separation_auc needs at least one positive and one negative score")
+    neg_arr = np.asarray(neg, dtype=np.float64)
+    total = 0.0
+    for value in pos:
+        total += float(np.sum(neg_arr < value)) + 0.5 * float(np.sum(neg_arr == value))
+    return total / (len(pos) * len(neg))
 
 
 def load_yaml(path: Path) -> dict[str, Any]:

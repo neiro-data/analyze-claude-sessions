@@ -9,6 +9,9 @@ default `uv run pytest` path. Run explicitly with:
 `-s` shows the printed recall@1 / recall@3 / false-accept summary; keep the
 current run's numbers as the baseline for comparing future retrieval changes
 against (see plan-nlp-slot-aware-matching.md).
+
+The `near_miss` section of the eval YAML is not read here; it is consumed by
+`scripts/rag_stress.py`.
 """
 
 from __future__ import annotations

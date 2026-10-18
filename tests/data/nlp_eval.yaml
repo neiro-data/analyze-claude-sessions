@@ -187,3 +187,50 @@ out_of_catalog:
   - tokens spent per model using claude-sonnet-5
   - what is the weather today
   - how many pull requests were merged last week
+
+# Questions that look like a catalog row (`decoy`, an exact `catalog` key) but
+# that no catalog row answers. A confident match to the decoy is a wrong
+# accept. `kind` is one of: antonym, negation, read_write_swap, granularity,
+# cost_vs_tokens. Consumed by scripts/rag_stress.py only (tests/test_nlp_eval.py
+# ignores it). Never used to tune a threshold -- held-out check. Trailing
+# comments are the observed all-MiniLM-L6-v2 top-1 score.
+near_miss:
+  - question: what is the cache write percentage
+    decoy: what is the overall cache read percentage
+    kind: read_write_swap  # 0.86
+  - question: least used model
+    decoy: which model is used most
+    kind: antonym  # 0.62
+  - question: how many sessions are NOT subagents
+    decoy: how many sessions are there
+    kind: negation  # 0.74
+  - question: average tokens per call
+    decoy: what is the total number of tokens overall
+    kind: granularity  # 0.65
+  - question: how much money did I spend
+    decoy: how many tokens were spent per model
+    kind: cost_vs_tokens  # 0.50
+  - question: what is the shortest session duration
+    decoy: what is the average session duration
+    kind: antonym
+  - question: which model is used least
+    decoy: which model is used most
+    kind: antonym
+  - question: how many transcripts are not subagent transcripts
+    decoy: how many subagent transcripts are there
+    kind: negation
+  - question: what are the shortest gaps between calls
+    decoy: what are the longest gaps between calls
+    kind: antonym
+  - question: input tokens per model
+    decoy: output tokens per model
+    kind: read_write_swap
+  - question: tokens per hour
+    decoy: total tokens per day
+    kind: granularity
+  - question: what did each project cost
+    decoy: total tokens per project
+    kind: cost_vs_tokens
+  - question: cost of this session in dollars
+    decoy: tokens spent in this session
+    kind: cost_vs_tokens

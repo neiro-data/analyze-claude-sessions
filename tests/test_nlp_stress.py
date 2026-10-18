@@ -31,9 +31,15 @@ from analyze_claude_sessions.nlp import (
     filter_examples,
 )
 from analyze_claude_sessions.nlp_stress import (
+    COMPARISON_SWEEP,
+    NEAR_MISS_KINDS,
     SQL_ADVERSARIAL_CORPUS,
     FakeHashBackend,
     generate_slot_questions,
+    load_yaml,
+    near_miss_cases,
+    operating_point,
+    separation_auc,
 )
 
 _KNOWN_PROJECTS = ["api-gateway", "api", "billing", "main", "data", "top"]
@@ -452,3 +458,62 @@ def test_catalog_retriever_is_confident_threshold(tmp_path: Path) -> None:
     retriever = CatalogRetriever(_make_examples(1), FakeHashBackend(), cache_dir=tmp_path)
     assert retriever.is_confident(0.5) is True
     assert retriever.is_confident(0.49999) is False
+
+
+# --------------------------------------------------------------------------
+# near_miss corpus, operating_point, separation_auc
+# --------------------------------------------------------------------------
+
+_EVAL_PATH = Path(__file__).parent / "data" / "nlp_eval.yaml"
+
+
+def test_near_miss_schema() -> None:
+    eval_data = load_yaml(_EVAL_PATH)
+    cases = near_miss_cases(eval_data)
+    assert len(cases) >= 6
+    catalog = eval_data["catalog"]
+    known = set(catalog) | {p for entry in catalog.values() for p in entry["paraphrases"]}
+    for case in cases:
+        assert case.decoy in catalog, case
+        assert case.question not in known, case
+        assert case.kind in NEAR_MISS_KINDS, case
+
+
+def test_near_miss_cases_missing_key_is_empty() -> None:
+    assert near_miss_cases({"catalog": {}}) == []
+
+
+def test_comparison_sweep_range() -> None:
+    assert COMPARISON_SWEEP[0] == 0.30
+    assert COMPARISON_SWEEP[-1] == 0.95
+
+
+def test_operating_point_allows_one_of_ten() -> None:
+    ooc = [0.1 * i for i in range(10)]  # 0.0 .. 0.9
+    t_star = operating_point([], ooc)
+    # floor(0.10 * 10) == 1 allowed -> 2nd highest (0.8) + eps; only 0.9 is >= t*
+    assert t_star == pytest.approx(0.8 + 1e-6)
+    assert sum(1 for sc in ooc if sc >= t_star) == 1
+
+
+def test_operating_point_no_false_accepts_allowed_below_ten() -> None:
+    ooc = [0.2, 0.9, 0.5]  # floor(0.3) == 0 -> highest + eps
+    t_star = operating_point([(0.8, True)], ooc)
+    assert t_star == pytest.approx(0.9 + 1e-6)
+    assert all(sc < t_star for sc in ooc)
+
+
+def test_operating_point_all_zero() -> None:
+    assert operating_point([], [0.0] * 5) == pytest.approx(1e-6)
+
+
+def test_operating_point_requires_ooc_scores() -> None:
+    with pytest.raises(ValueError):
+        operating_point([], [])
+
+
+def test_separation_auc_perfect_identical_and_ties() -> None:
+    assert separation_auc([0.9, 0.8], [0.1, 0.2]) == 1.0
+    assert separation_auc([0.1, 0.2], [0.9, 0.8]) == 0.0
+    assert separation_auc([0.5, 0.5], [0.5, 0.5]) == 0.5
+    assert separation_auc([0.9, 0.5], [0.5]) == pytest.approx(0.75)
