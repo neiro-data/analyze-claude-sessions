@@ -203,7 +203,7 @@ to `DATABASE_URL` (the owner role) and prints a one-line dim warning.
 
 ```bash
 make ask-eval                                 # per-kind tables for the tune and test splits
-make ask-eval ARGS=--tune                     # sweep CONFIDENCE_SWEEP on tune.yaml only
+make ask-eval ARGS=--tune                     # sweep threshold x gap margin on tune.yaml only
 make ask-eval ARGS=--update-baseline          # rewrite baseline.json from test.yaml
 uv run --group nlp pytest -m "slow and live_db" tests/test_nlp_eval.py -s
 ```
@@ -217,12 +217,37 @@ is held out and frozen. Each case has a `question`, an `expect` (a catalog quest
 interval), wrong-accept rate, over-refusal rate, and recall@1/@3 per kind. The pytest run
 compares the test split to `baseline.json` (accuracy may drop by at most 0.02, wrong-accept
 may rise by at most 0.02). A baseline recorded on another model or catalog fails with a
-re-baseline message. `--tune` prints a suggested threshold and never edits code. The
+re-baseline message. `--tune` prints a suggested (threshold, gap margin) pair and never edits code. The
 `slow` / `live_db` test stays out of `make check`; the fast corpus checks live in
 `tests/test_ask_eval.py`.
 
 `tests/data/nlp_eval.yaml` is still read by `scripts/ask_stress.py` and the stress tests
 (its `near_miss` section and paraphrase corpus); the ask eval does not use it.
+
+#### Retrieval stack
+
+`acp ask` scores each catalog row as the max over its variant texts (question, the
+`paraphrases` array added by `sql/020_nlp_paraphrases.sql`, and the description). The score is
+`0.7 * cosine + 0.3 * BM25` over character 3-5-grams, after a catalog-vocabulary spell check
+(`sesions` -> `sessions`). A hit is accepted only if the top score is at least
+`HYBRID_CONFIDENCE_THRESHOLD` (0.5) and leads the runner-up by `GAP_MARGIN` (0.03); both were
+chosen on `tune.yaml` only, with a 10% wrong-accept ceiling. A contrast guard demotes a row whose question says the opposite of
+the asked term (least/most, read/write, input/output, cost/tokens).
+
+```bash
+uv run acp ask "…" --no-contrast-guard   # skip the opposite-term guard
+uv run acp ask "…" --rerank              # opt-in cross-encoder re-rank (downloads a ~90 MB model once)
+make ask-eval ARGS="--mode cosine"       # ablation: cosine over variants only
+make ask-eval ARGS="--mode hybrid"       # default stack (guard on); add --no-contrast-guard to ablate
+make ask-eval ARGS="--tune --max-wrong-accept 0.10"  # looser tune ceiling (default 0.05)
+make ask-eval ARGS="--mode rerank --tune"  # sweep the cross-encoder stack
+make ask-eval ARGS="--mode hybrid --lexical-weight 0.8 --tune"  # try another cosine/BM25 mix
+```
+
+The re-ranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`) is off by default: on `tune.yaml` it
+scored worse than the fused scores (it is trained for query-to-passage relevance, not
+question-to-question matching). If it cannot load, `ask` falls back to the fused scores with one
+warning.
 
 #### ask stress suite (opt-in)
 
