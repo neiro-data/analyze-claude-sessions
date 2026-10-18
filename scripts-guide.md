@@ -320,7 +320,9 @@ running `make up` on the new version:
 # on the old version
 make down
 for v in pgdata grafana-data; do
-  docker volume create analyze-claude-sessions_$v
+  # The labels mark the volume as Compose-owned; without them every `docker compose` call warns.
+  docker volume create --label com.docker.compose.project=analyze-claude-sessions \
+    --label com.docker.compose.volume=$v analyze-claude-sessions_$v
   docker run --rm -v analyze-claude-projects_$v:/from -v analyze-claude-sessions_$v:/to \
     alpine cp -a /from/. /to/
 done
@@ -339,3 +341,29 @@ everything except the append-only `claude.model_pricing` history (re-run `make p
 
 If you installed the launchd timer, run `make uninstall-timer` before pulling and
 `make install-timer` after — the job label changed.
+
+### Fixing the `already exists but was not created by Docker Compose` warning
+
+Volumes copied with an older version of these steps have no Compose labels, so every
+`docker compose` call prints that warning. The data is fine. Docker cannot add labels to an
+existing volume, so recreate each one through a temporary copy. Back up first (`bin/backup-db.sh`)
+and note `select count(*) from claude.api_calls;`.
+
+```bash
+docker compose --profile cli --profile dashboard down
+# Checksums, not du: directory block allocation differs between copies.
+sums() { docker run --rm -v "$1":/d:ro alpine sh -c 'cd /d && find . -type f -exec md5sum {} + | sort -k2'; }
+for v in pgdata grafana-data; do
+  src=analyze-claude-sessions_$v
+  docker volume create tmp_$v
+  docker run --rm -v $src:/from -v tmp_$v:/to alpine cp -a /from/. /to/
+  [ "$(sums $src | md5sum)" = "$(sums tmp_$v | md5sum)" ] || { echo "mismatch: $v"; break; }
+  docker volume rm $src
+  docker volume create --label com.docker.compose.project=analyze-claude-sessions \
+    --label com.docker.compose.volume=$v $src
+  docker run --rm -v tmp_$v:/from -v $src:/to alpine cp -a /from/. /to/
+  docker volume rm tmp_$v
+done
+make up
+make psql   # the count must match the one noted before
+```
