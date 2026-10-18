@@ -91,15 +91,13 @@ trailing notes after the tier label, such as "(deprecated)", are ignored.
 
 ```bash
 make venv                  # uv sync
-uv sync --group nlp        # also needed for the tests: four NLP test modules import numpy
 make check                 # ruff + mypy --strict + pytest
 uv run pytest -m live_db   # opt-in: tests against a running PostgreSQL with sql/*.sql applied
 ```
 
-Ruff (100 cols, `E,F,I,W,UP,S,B`) and the default test suite pass. Without the `nlp` group,
-pytest fails at collection with `ModuleNotFoundError: numpy`. `mypy --strict` has 9 known
-errors in `tests/test_nlp*.py` (missing type annotations and arg types), so `make check`
-does not pass yet. Tests mock nothing away that matters: the report tests shell out to the
+`make check` passes with only the default `dev` group (ruff 100 cols, `E,F,I,W,UP,S,B`;
+`mypy --strict`; pytest). The `nlp` group is needed only for the `slow` ask tests and the
+ask eval/stress commands below. Tests mock nothing away that matters: the report tests shell out to the
 real script (skipped if `jq` is missing). The default run excludes `slow` and `live_db`
 tests, so it needs no PostgreSQL.
 
@@ -134,9 +132,11 @@ launchctl list | grep com.analyze-claude-sessions.ingest
 launchctl start com.analyze-claude-sessions.ingest   # run once, right now
 ```
 
-### [WIP] Natural-language queries (`acp ask`)
+### [WIP] Ask in plain English (`acp ask`)
 
-> **Status:** optional, in development. Needs the `nlp` dependency group.
+> **Status:** optional, in development. Needs the `nlp` dependency group. Two modes:
+> catalog mode (default, offline, no generated SQL) and LLM mode (opt-in `--llm`, calls the
+> Anthropic API).
 
 Run it from the project root with `uv`:
 
@@ -152,7 +152,8 @@ or `make shell` then `acp ask "…"` — if you'd rather not run it on the host.
 
 It matches your question against a curated catalog of SQL queries (`claude.nlp_examples`,
 seeded by `sql/005_nlp_catalog.sql`) using local sentence embeddings, then runs the best
-match read-only. Fully offline — no network access or API key. Add `--sql` to see the
+match read-only. This is **catalog mode**, the default. It is fully offline — no network
+access or API key. It retrieves and runs existing queries; it does not generate SQL. Add `--sql` to see the
 matched query, `--no-execute` to only preview it. If nothing matches confidently, it prints
 the closest candidate questions instead of guessing.
 
@@ -203,7 +204,7 @@ so rotate first. If the connected role is a superuser or owns the `claude` schem
 variable is unset and `ask` falls back to `DATABASE_URL`), `ask` prints a one-line dim warning
 after connecting.
 
-#### LLM mode (RAG, opt-in)
+#### LLM mode (`--llm`, RAG, opt-in)
 
 `acp ask --llm "cost per model last week"` retrieves the top 5 catalog examples plus the
 `claude.v_schema_catalog` rows they (or your question) mention, and asks Claude to write one
@@ -217,7 +218,7 @@ leave your machine otherwise.
 Needs `uv sync --group llm --group nlp`, `ANTHROPIC_API_KEY`, and an explicit
 `ASK_DATABASE_URL` (no owner-role fallback here). Model: `ACP_ASK_LLM_MODEL`
 (default `claude-opus-5-5`). Missing key or package is an error, never a silent fallback to
-template matching. Plain `acp ask` never calls the API.
+catalog mode. Plain `acp ask` never calls the API.
 
 #### End-to-end ask eval
 

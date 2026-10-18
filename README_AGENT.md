@@ -29,9 +29,10 @@ bug that also affects the original:
 ```
 docker/postgres/Dockerfile   two-stage pg_parquet build
 docker/app/Dockerfile        python:3.12-slim + bash + jq + uv
-docker-compose.yml           postgres service + app CLI (profile: cli)
-sql/                         001 extensions … 013 duplicated tokens (see sql/ for full list)
-scripts/                     vendored per-call timing report, DuckDB ad-hoc, ask stress
+docker/grafana/              Grafana datasource + dashboard provisioning
+docker-compose.yml           postgres service + app CLI (profile: cli) + grafana (profile: dashboard)
+sql/                         001 extensions … 022 near-miss catalog rows (no 021; see sql/)
+scripts/                     vendored per-call timing report, DuckDB ad-hoc, ask stress + eval
 src/analyze_claude_sessions/
   config.py                  env-driven settings
   discovery.py                find transcripts (main + subagent)
@@ -40,8 +41,11 @@ src/analyze_claude_sessions/
   loader.py                    polars read + COPY + upsert
   pipeline.py                  per-transcript orchestration
   parquet_export.py            pg_parquet COPY TO
+  pricing.py / pricing_refresh.py  pricing CSV load + snapshot diff
   db.py                        connections, migrations, run audit
-  nlp.py / nlp_stress.py       acp ask retrieval + stress harness
+  nlp.py / nlp_stress.py       acp ask catalog retrieval + stress harness
+  ask_eval.py                  end-to-end acp ask decision eval
+  llm.py                       acp ask --llm (Anthropic API, generated SQL)
   cli.py                       `acp` commands
 tests/                       tests, no database required (see tests/ for current count)
 ```

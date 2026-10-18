@@ -30,7 +30,8 @@ A session owns **more than one** `.jsonl` file:
 
 Subagent files repeat the parent's `sessionId` but contain a **disjoint** set of
 `requestId`s — verified: zero overlap. They are real, additional API calls, and on this
-machine they account for **49% of all billed input tokens**. So the unit that maps 1:1 onto
+machine they account for **23.9% of all billed input tokens** (2026-10-17, all time; 49% on
+2026-08-08, when usage was smaller). So the unit that maps 1:1 onto
 a CSV is `claude.transcripts`, not `claude.sessions`; a session is a rollup over its
 transcripts.
 
@@ -140,17 +141,21 @@ COPY some_table FROM '/parquet/api_calls.parquet' WITH (format 'parquet');
 
 ## Verified run
 
-Against 250 transcripts in `~/.claude/projects` (2026-08-08):
+Two runs against `~/.claude/projects`. The 2026-10-17 run covers all time
+(2026-07-18 → 2026-10-17) and comes after the sub-agent relink fixes (v0.4.1, v0.5.0).
 
-| | |
-| --- | --- |
-| Projects / sessions / transcripts | 11 / 103 / 250 (147 subagent) |
-| API calls loaded | 5,029 (0 failures) |
-| Billed input tokens | 324,912,925 |
-| Output tokens | 3,088,590 |
-| Cache read share of input | 95.96% |
-| Subagent share of input tokens | 49.15% |
+| | 2026-10-17 | 2026-08-08 |
+| --- | --- | --- |
+| Projects / sessions / transcripts | 46 / 655 / 1,174 (519 subagent) | 11 / 103 / 250 (147 subagent) |
+| API calls loaded | 25,678 | 5,029 (0 failures) |
+| Billed input tokens | 1.83 B | 324,912,925 |
+| Output tokens | 12.1 M | 3,088,590 |
+| Cache read share of input | 96.74% | 95.96% |
+| Subagent share of input tokens | 23.9% | 49.15% |
 
-Integrity checks all pass: `csv_files` = transcripts with calls (225 = 225), no transcript
+On 2026-10-17, sub-agent calls link to their own transcript, except the calls of 2 sub-agents
+that have no transcript file; those stay on the parent session.
+
+2026-08-08 integrity checks all pass: `csv_files` = transcripts with calls (225 = 225), no transcript
 whose loaded row count disagrees with its transcript-derived `api_call_count`, no orphan
 calls. Parquet round-trip (export 5,029 rows → `COPY FROM` → re-sum) matches exactly.
