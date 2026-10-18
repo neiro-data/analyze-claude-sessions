@@ -162,3 +162,19 @@ def test_known_bypass_flag_is_reported_only_when_allowed(
     report = ask.run_battery(seed=1, quick=True, models=["a"], backend_factory=_factory)
     assert [b[0] for b in report.known_bypasses] == ["held_open"]
     assert report.guard_bypasses == []
+
+
+def test_render_markdown_end_to_end_section_skipped_without_catalog(two_model_report: Any) -> None:
+    md = ask.render_markdown(two_model_report)
+    assert "## End-to-end decision" in md
+    assert "Skipped: no live catalog" in md
+
+
+def test_render_markdown_end_to_end_section_lists_counts() -> None:
+    report = ask.run_battery(seed=1, quick=True, models=["a"], backend_factory=_factory)
+    report.end_to_end = {
+        "a": {"outcomes": {"accept": 3, "low_confidence": 1}, "verdicts": {"correct": 4}}
+    }
+    md = ask.render_markdown(report)
+    assert "| accept | 3 |" in md
+    assert "| correct | 4 |" in md

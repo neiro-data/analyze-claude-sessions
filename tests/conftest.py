@@ -11,7 +11,13 @@ import pytest
 collect_ignore = (
     []
     if importlib.util.find_spec("numpy")
-    else ["test_nlp.py", "test_nlp_stress.py", "test_nlp_eval.py", "test_nlp_stress_slow.py"]
+    else [
+        "test_nlp.py",
+        "test_nlp_stress.py",
+        "test_nlp_eval.py",
+        "test_nlp_stress_slow.py",
+        "test_ask_eval.py",
+    ]
 )
 
 SESSION_ID = UUID("bb5714bc-8305-4138-818a-3a96bcfe6549")

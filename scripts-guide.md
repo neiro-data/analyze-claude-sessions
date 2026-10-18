@@ -199,18 +199,30 @@ uv run acp ask "how much money did I spend"   # cost rows; unpriced calls are co
 Rotate its placeholder password after first init. If the variable is unset, `ask` falls back
 to `DATABASE_URL` (the owner role) and prints a one-line dim warning.
 
-#### Retrieval quality checks
+#### End-to-end ask eval
 
 ```bash
-uv run --group nlp pytest -m slow tests/test_nlp_eval.py -s
+make ask-eval                                 # per-kind tables for the tune and test splits
+make ask-eval ARGS=--tune                     # sweep CONFIDENCE_SWEEP on tune.yaml only
+make ask-eval ARGS=--update-baseline          # rewrite baseline.json from test.yaml
+uv run --group nlp pytest -m "slow and live_db" tests/test_nlp_eval.py -s
 ```
 
-Loads the real embedding model against `tests/data/nlp_eval.yaml` (paraphrases per catalog
-entry, plus out-of-catalog questions) and prints recall@1, recall@3, and a false-accept
-rate. Marked `slow` and excluded from `make check` / the default `pytest` run since it loads
-a real model; run it by hand when changing retrieval and compare against the last printed
-numbers. The eval YAML also has a `near_miss` section (questions that look like a catalog
-row but that no row answers); it is ignored here and used by `scripts/ask_stress.py`.
+Scores the whole `ask` decision (slots, retrieval, refusal) with `resolve_ask` against the
+real `claude.nlp_examples` rows, so run `make up && make init-db` first. Cases live in
+`tests/data/ask_eval/`: `tune.yaml` is the only set a threshold may be chosen on, `test.yaml`
+is held out and frozen. Each case has a `question`, an `expect` (a catalog question or
+`refuse`), a `kind` (`paraphrase`, `near_miss`, `opposite`, `ood`, `typo`, `slot`,
+`unbindable`), and optional `expect_params`. The report shows accuracy (with a Wilson 95%
+interval), wrong-accept rate, over-refusal rate, and recall@1/@3 per kind. The pytest run
+compares the test split to `baseline.json` (accuracy may drop by at most 0.02, wrong-accept
+may rise by at most 0.02). A baseline recorded on another model or catalog fails with a
+re-baseline message. `--tune` prints a suggested threshold and never edits code. The
+`slow` / `live_db` test stays out of `make check`; the fast corpus checks live in
+`tests/test_ask_eval.py`.
+
+`tests/data/nlp_eval.yaml` is still read by `scripts/ask_stress.py` and the stress tests
+(its `near_miss` section and paraphrase corpus); the ask eval does not use it.
 
 #### ask stress suite (opt-in)
 
