@@ -164,3 +164,34 @@
 - {question: "tokns spent per modl", expect: "how many tokens were spent per model", kind: typo}
 - {question: "what is the cost per modle", expect: "what is the cost per model", kind: typo}
 - {question: "cache report session_id=1500e4c2-9021-4496-860e-5f99ec8ee7f5 plz", expect: "cache report", kind: typo}
+# --- added for ask-retrieval: looser paraphrases, more typos, more opposites ----
+- {question: "what's the number of sessions I've logged", expect: "how many sessions are there", kind: paraphrase}
+- {question: "how many different projects exist", expect: "how many projects are there", kind: paraphrase}
+- {question: "how many transcript files do I have", expect: "how many transcripts are there", kind: paraphrase}
+- {question: "how many requests to the api so far", expect: "how many api calls are there", kind: paraphrase}
+- {question: "which model used the most tokens", expect: "how many tokens were spent per model", kind: paraphrase}
+- {question: "token spend across projects", expect: "total tokens per project", kind: paraphrase}
+- {question: "how are tokens trending per day", expect: "total tokens per day", kind: paraphrase}
+- {question: "which sessions burned the most tokens", expect: "top 10 sessions by total tokens", kind: paraphrase}
+- {question: "what's a typical session length", expect: "what is the average session duration", kind: paraphrase}
+- {question: "how much of my input is served by the cache", expect: "what is the overall cache read percentage", kind: paraphrase}
+- {question: "where are the biggest waits between requests", expect: "what are the longest gaps between calls", kind: paraphrase}
+- {question: "what model do I rely on the most", expect: "which model is used most", kind: paraphrase}
+- {question: "how much has it all cost me", expect: "how much money did I spend in total", kind: paraphrase}
+- {question: "dollars spent by model", expect: "what is the cost per model", kind: paraphrase}
+- {question: "which of my sessions were the costliest", expect: "top 10 most expensive sessions", kind: paraphrase}
+- {question: "how many sesions do I have", expect: "how many sessions are there", kind: typo}
+- {question: "how many prjects are there", expect: "how many projects are there", kind: typo}
+- {question: "totl tokens per projct", expect: "total tokens per project", kind: typo}
+- {question: "total tokns per day", expect: "total tokens per day", kind: typo}
+- {question: "how many tokns were spent per modle", expect: "how many tokens were spent per model", kind: typo}
+- {question: "wich model is used least", expect: "which model is used least", kind: typo}
+- {question: "average sesion duration", expect: "what is the average session duration", kind: typo}
+- {question: "what is the cost per projct", expect: "what is the cost per project", kind: typo}
+- {question: "cahce report", expect: "cache report", kind: typo}
+- {question: "number of api cals", expect: "how many api calls are there", kind: typo}
+- {question: "top 10 sesions by total tokens", expect: "top 10 sessions by total tokens", kind: typo}
+- {question: "what is the overall cache wrtie percentage", expect: "what is the overall cache write percentage", kind: typo}
+- {question: "least expensive sessions", expect: refuse, kind: opposite}
+- {question: "shortest gaps between api calls", expect: refuse, kind: opposite}
+- {question: "which model gets used the fewest times by tokens", expect: refuse, kind: opposite}

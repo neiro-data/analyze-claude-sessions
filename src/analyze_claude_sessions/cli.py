@@ -269,6 +269,16 @@ def ask(
     top_k: Annotated[int, typer.Option("--top-k", min=1, help="Candidates to consider.")] = 3,
     show_sql: Annotated[bool, typer.Option("--sql", help="Print the matched SQL.")] = False,
     execute: Annotated[bool, typer.Option(help="Run the matched query.")] = True,
+    rerank: Annotated[
+        bool, typer.Option("--rerank/--no-rerank", help="Cross-encoder re-rank of the top hits.")
+    ] = False,
+    contrast_guard: Annotated[
+        bool,
+        typer.Option(
+            "--contrast-guard/--no-contrast-guard",
+            help="Demote catalog rows that say the opposite (least/most, read/write, ...).",
+        ),
+    ] = True,
 ) -> None:
     """Answer a question by matching it to curated SQL and running it read-only.
 
@@ -280,12 +290,12 @@ def ask(
     try:
         from .nlp import (
             AskDecision,
-            CatalogRetriever,
             LocalEmbeddingBackend,
             NlpDependencyError,
             UnboundFilterError,
             UnsafeQueryError,
             ensure_read_only,
+            hybrid_retriever_factory,
             load_examples,
             resolve_ask,
         )
@@ -308,7 +318,7 @@ def ask(
         with connect(settings.ask_database_url) as conn:
             rows = fetch_all(
                 conn,
-                "SELECT example_id, question, sql_text, description, tags, slots "
+                "SELECT example_id, question, sql_text, description, tags, slots, paraphrases "
                 "FROM claude.nlp_examples",
             )
             examples = load_examples(rows)
@@ -325,7 +335,9 @@ def ask(
             decision = resolve_ask(
                 question,
                 examples,
-                lambda scoped: CatalogRetriever(scoped, LocalEmbeddingBackend()),
+                hybrid_retriever_factory(
+                    LocalEmbeddingBackend(), rerank=rerank, contrast_guard=contrast_guard
+                ),
                 known_projects=known_projects,
                 known_models=known_models,
                 top_k=top_k,

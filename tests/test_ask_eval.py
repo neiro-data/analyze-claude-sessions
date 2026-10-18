@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ import pytest
 
 from analyze_claude_sessions.ask_eval import (
     REFUSE,
+    SQL_DIR,
     TEST_PATH,
     TUNE_PATH,
     EvalCase,
@@ -94,9 +96,10 @@ def test_paraphrases_are_not_catalog_wording(cases: list[EvalCase]) -> None:
 
 
 def test_test_questions_do_not_leak_into_catalog_paraphrases() -> None:
-    if "paraphrases" not in NlpExample.__dataclass_fields__:
-        pytest.skip("catalog has no paraphrase column yet")
-    pytest.fail("wire this guard to the catalog paraphrase source")
+    sql = (SQL_DIR / "020_nlp_paraphrases.sql").read_text().lower()
+    paraphrases = set(re.findall(r"'([^']+)'", sql))
+    leaked = {c.question.lower() for c in TEST} & paraphrases
+    assert not leaked
 
 
 # --- scorer ----------------------------------------------------------------
@@ -195,6 +198,6 @@ def test_tune_reads_only_the_tune_split(monkeypatch: pytest.MonkeyPatch, tmp_pat
     examples = [_example(q) for q in sorted(CATALOG)[:12]]
     rows, chosen = tune(examples, FakeHashBackend(), (0.3, 0.5, 0.7), cache_dir=tmp_path)
     assert [r.threshold for r in rows] == [0.3, 0.5, 0.7]
-    assert chosen is None or chosen in (0.3, 0.5, 0.7)
+    assert chosen is None or chosen[0] in (0.3, 0.5, 0.7)
     assert TUNE_PATH.name in opened
     assert TEST_PATH.name not in opened

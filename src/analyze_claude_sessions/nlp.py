@@ -1,20 +1,26 @@
 """Offline NLP retrieval layer: match natural-language questions to curated SQL.
 
-No network access or API key is required. Retrieval works by embedding the
-`claude.nlp_examples` question corpus with a local sentence-transformers
-model and ranking by cosine similarity against the user's question.
+No network access or API key is required. Retrieval works by embedding every
+variant of each `claude.nlp_examples` row (question, paraphrases, description)
+with a local sentence-transformers model, fusing the cosine similarity with a
+typo-tolerant character n-gram BM25 score, and optionally re-ranking the top
+hits with a local cross-encoder. A row's score is the max over its variants.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
+import sys
 import tempfile
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from difflib import get_close_matches
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -28,6 +34,28 @@ from analyze_claude_sessions.config import get_settings
 
 #: Minimum cosine similarity for a top hit to be considered a confident match.
 CONFIDENCE_THRESHOLD = 0.5
+
+#: Hybrid (cosine + BM25) scale: threshold and minimum top1 - top2 gap for a hit to be
+#: accepted (near-ties are refused). Chosen on tune.yaml only (`ask_eval.py --tune
+#: --max-wrong-accept 0.10`).
+HYBRID_CONFIDENCE_THRESHOLD = 0.5
+GAP_MARGIN = 0.03
+
+#: Weight of the embedding cosine in the fused score; the rest is char-n-gram BM25.
+#: `CatalogRetriever` itself defaults to 1.0 (cosine only); `hybrid_retriever_factory` uses this.
+LEXICAL_WEIGHT = 0.7
+
+#: Cross-encoder used to re-rank the fused top hits (already in the `nlp` group).
+DEFAULT_RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+#: How many fused hits the cross-encoder re-ranks.
+RERANK_TOP_K = 5
+
+#: Acceptance constants on the re-ranker's sigmoid score scale (separate from the fused ones).
+#: Opt-in only: on tune.yaml the ms-marco cross-encoder was worse than the fused scores
+#: (no threshold met the 5% wrong-accept ceiling), so these are not tuned to a pick.
+RERANK_CONFIDENCE_THRESHOLD = 0.6
+RERANK_GAP_MARGIN = 0.05
 
 #: Tag marking a catalog example as scoped to a single session_id.
 SESSION_SCOPED_TAG = "session_scoped"
@@ -200,6 +228,187 @@ class NlpExample:
     description: str | None = None
     tags: tuple[str, ...] = ()
     slots: tuple[SlotSpec, ...] = ()
+    paraphrases: tuple[str, ...] = ()
+
+
+def _variant_texts(example: NlpExample) -> list[str]:
+    """Every text a row can match on: question, paraphrases, then description."""
+    texts = [example.question, *example.paraphrases]
+    if example.description:
+        texts.append(example.description)
+    return texts
+
+
+class Reranker(Protocol):
+    """Scores (question, candidate text) pairs; higher means a better match."""
+
+    def score(self, pairs: list[tuple[str, str]]) -> list[float]:
+        """Return one relevance score in [0, 1] per input pair."""
+        ...
+
+
+class LocalCrossEncoder:
+    """Wraps a local sentence-transformers cross-encoder. Lazily imports/loads it."""
+
+    def __init__(self, model_name: str = DEFAULT_RERANK_MODEL) -> None:
+        self._model_name = model_name
+        self._model: object | None = None
+
+    def is_available(self) -> bool:
+        """True if the model can load without network (cached) or the Hub is reachable."""
+        return LocalEmbeddingBackend(self._model_name)._is_cached()
+
+    def _load(self) -> object:
+        if self._model is not None:
+            return self._model
+        if "HF_HUB_OFFLINE" not in os.environ and self.is_available():
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        try:
+            from sentence_transformers import CrossEncoder
+        except ImportError as exc:  # pragma: no cover - exercised via missing dep
+            raise NlpDependencyError(
+                "The 'nlp' extra is required for `acp ask`. "
+                "Install it once with: uv sync --group nlp"
+            ) from exc
+        self._model = CrossEncoder(self._model_name)
+        return self._model
+
+    def score(self, pairs: list[tuple[str, str]]) -> list[float]:
+        model = self._load()
+        logits = np.asarray(model.predict(pairs), dtype=np.float64)  # type: ignore[attr-defined]
+        return [float(s) for s in 1.0 / (1.0 + np.exp(-logits))]
+
+
+_WORD_RE = re.compile(r"[a-z0-9_]+")
+
+#: Score subtracted from a row whose question says the opposite of the user's question.
+CONTRAST_PENALTY = 0.25
+
+#: Opposing term sets for the optional contrast guard (see `apply_contrast_guard`).
+_CONTRAST_PAIRS: tuple[tuple[frozenset[str], frozenset[str]], ...] = (
+    (
+        frozenset(
+            "least fewest lowest minimum min smallest shortest bottom cheapest fewer lower".split()
+        ),
+        frozenset(
+            "most highest maximum max largest longest biggest top priciest expensive more".split()
+        ),
+    ),
+    (frozenset({"read", "reads"}), frozenset({"write", "writes", "written", "wrote"})),
+    (frozenset({"input", "inputs"}), frozenset({"output", "outputs", "completion", "generated"})),
+    (
+        frozenset(
+            {"cost", "costs", "money", "dollar", "dollars", "usd", "price", "priced", "bill"}
+        ),
+        frozenset({"token", "tokens"}),
+    ),
+)
+
+#: Words shorter than this are never spell-corrected (too ambiguous).
+_MIN_CORRECTABLE_LEN = 4
+_TYPO_CUTOFF = 0.8
+
+
+def _correct_typos(question: str, vocabulary: set[str]) -> str:
+    """Replace words absent from *vocabulary* by their closest vocabulary word, if close enough.
+
+    Catalog-domain spell check: "sesions" -> "sessions". Unknown words with no close
+    match (e.g. "lisbon") are left alone, so out-of-catalog questions stay out-of-catalog.
+    """
+
+    def fix(match: re.Match[str]) -> str:
+        word = match.group(0)
+        if len(word) < _MIN_CORRECTABLE_LEN or word in vocabulary or word.isdigit():
+            return word
+        close = get_close_matches(word.lower(), vocabulary, n=1, cutoff=_TYPO_CUTOFF)
+        return close[0] if close else word
+
+    return _WORD_RE.sub(fix, question.lower())
+
+
+def _contrast_conflict(question_words: set[str], row_words: set[str]) -> bool:
+    """True if the question uses a term whose opposite (and not the term) is in the row."""
+    for left, right in _CONTRAST_PAIRS:
+        for mine, theirs in ((left, right), (right, left)):
+            asks = question_words & mine
+            if asks and not question_words & theirs and row_words & theirs and not row_words & mine:
+                return True
+    return False
+
+
+def apply_contrast_guard(
+    question: str,
+    ranked: list[tuple[NlpExample, float]],
+    *,
+    penalty: float = CONTRAST_PENALTY,
+) -> list[tuple[NlpExample, float]]:
+    """Demote rows whose question holds the opposite of a contrast term in *question*.
+
+    Targets "fewest tokens per project" matching "top 10 projects by tokens": embeddings
+    treat opposites as near-synonyms. A row is demoted only when its question holds the
+    opposite term and lacks the asked one; questions using both sides are left alone.
+    """
+    question_words = set(_WORD_RE.findall(question.lower()))
+    guarded = [
+        (
+            example,
+            score - penalty
+            if _contrast_conflict(question_words, set(_WORD_RE.findall(example.question.lower())))
+            else score,
+        )
+        for example, score in ranked
+    ]
+    return sorted(guarded, key=lambda pair: -pair[1])
+
+
+def _char_ngrams(text: str, lo: int = 3, hi: int = 5) -> list[str]:
+    """Character n-grams (lo..hi) of *text* with word boundaries kept as spaces."""
+    padded = f" {' '.join(re.findall(r'[a-z0-9_]+', text.lower()))} "
+    return [padded[i : i + n] for n in range(lo, hi + 1) for i in range(len(padded) - n + 1)]
+
+
+class LexicalIndex:
+    """BM25 over character 3-5-grams: tolerates typos that break word matching.
+
+    Scores are divided by the best score a perfect match could reach for the
+    query (every query gram present once in a document of average length), so
+    they land in roughly [0, 1] on an absolute scale and an out-of-catalog
+    question cannot look good just by being the least-bad hit.
+    """
+
+    K1 = 1.2
+    B = 0.75
+
+    def __init__(self, documents: list[str]) -> None:
+        self._postings: dict[str, list[tuple[int, int]]] = {}
+        self._lengths: list[int] = []
+        for doc_id, document in enumerate(documents):
+            grams = Counter(_char_ngrams(document))
+            self._lengths.append(sum(grams.values()))
+            for gram, tf in grams.items():
+                self._postings.setdefault(gram, []).append((doc_id, tf))
+        self._n_docs = len(documents)
+        self._avg_len = (sum(self._lengths) / self._n_docs) if self._n_docs else 1.0
+
+    def _idf(self, gram: str) -> float:
+        df = len(self._postings.get(gram, ()))
+        return math.log(1.0 + (self._n_docs - df + 0.5) / (df + 0.5))
+
+    def scores(self, query: str) -> NDArray[np.float32]:
+        """Normalised BM25 score of *query* against each document."""
+        out = np.zeros(self._n_docs, dtype=np.float64)
+        query_grams = set(_char_ngrams(query))
+        best = 0.0
+        for gram in query_grams:
+            idf = self._idf(gram)
+            best += idf * (self.K1 + 1.0)
+            for doc_id, tf in self._postings.get(gram, ()):
+                norm = self.K1 * (1.0 - self.B + self.B * self._lengths[doc_id] / self._avg_len)
+                out[doc_id] += idf * tf * (self.K1 + 1.0) / (tf + norm)
+        if best > 0.0:
+            out /= best
+        return np.asarray(np.clip(out, 0.0, 1.0), dtype=np.float32)
 
 
 def _cosine_similarity(
@@ -212,7 +421,7 @@ def _cosine_similarity(
 
 
 def _catalog_cache_key(model_name: str, examples: list[NlpExample]) -> str:
-    """Stable hash of the model name plus the catalog's (id, question) rows.
+    """Stable hash of the model name plus the catalog's (id, variant texts) rows.
 
     Sorted by `example_id` so row order in the source query doesn't affect the
     key, and encoded deterministically so the same catalog always hashes the
@@ -226,7 +435,9 @@ def _catalog_cache_key(model_name: str, examples: list[NlpExample]) -> str:
     hasher.update(_length_prefixed(model_name.encode("utf-8")))
     for example in sorted(examples, key=lambda e: e.example_id):
         hasher.update(_length_prefixed(str(example.example_id).encode("utf-8")))
-        hasher.update(_length_prefixed(example.question.encode("utf-8")))
+        for text in _variant_texts(example):
+            hasher.update(_length_prefixed(text.encode("utf-8")))
+        hasher.update(_length_prefixed(b"|"))
     return hasher.hexdigest()
 
 
@@ -280,7 +491,13 @@ def _store_cached_embeddings(
 
 
 class CatalogRetriever:
-    """Ranks curated `NlpExample` rows against a free-text question."""
+    """Ranks curated `NlpExample` rows against a free-text question.
+
+    Each row is scored as the max over its variant texts of
+    `w * cosine + (1 - w) * bm25`; with a *reranker* the top `RERANK_TOP_K`
+    rows are re-scored by the cross-encoder on its own (sigmoid) scale, which
+    has its own acceptance constants.
+    """
 
     def __init__(
         self,
@@ -288,35 +505,131 @@ class CatalogRetriever:
         backend: Backend,
         *,
         cache_dir: Path | None = None,
+        reranker: Reranker | None = None,
+        lexical_weight: float = 1.0,
+        contrast_guard: bool = False,
     ) -> None:
         self._examples = examples
         self._backend = backend
+        self._reranker = reranker
+        self._lexical_weight = lexical_weight
+        self._contrast_guard = contrast_guard
         self._embeddings: NDArray[np.float32] | None = None
+        self._variant_rows: NDArray[np.intp] = np.zeros(0, dtype=np.intp)
+        self._variants: list[str] = []
+        self._lexical: LexicalIndex | None = None
+        self._vocabulary: set[str] = set()
+        self._rerank_warned = False
+        self._set_acceptance()
         if not examples:
             return
+
+        rows: list[int] = []
+        for row, example in enumerate(examples):
+            for text in _variant_texts(example):
+                self._variants.append(text)
+                rows.append(row)
+        self._variant_rows = np.asarray(rows, dtype=np.intp)
+        self._lexical = LexicalIndex(self._variants)
+        self._vocabulary = {w for v in self._variants for w in _WORD_RE.findall(v.lower())}
 
         resolved_cache_dir = cache_dir or get_settings().nlp_embeddings_cache_dir
         cache_key = _catalog_cache_key(backend.model_name, examples)
         cached = _load_cached_embeddings(resolved_cache_dir, cache_key)
-        if cached is not None and cached.shape[0] == len(examples):
+        if cached is not None and cached.shape[0] == len(self._variants):
             self._embeddings = cached
             return
 
-        self._embeddings = backend.encode([example.question for example in examples])
+        self._embeddings = backend.encode(self._variants)
         _store_cached_embeddings(resolved_cache_dir, cache_key, self._embeddings)
+
+    def _set_acceptance(self) -> None:
+        """Pick the threshold/gap for the active scoring scale (cosine, hybrid or re-ranked)."""
+        if self._reranker is not None:
+            self.threshold, self.gap_margin = RERANK_CONFIDENCE_THRESHOLD, RERANK_GAP_MARGIN
+        elif self._lexical_weight < 1.0:
+            self.threshold, self.gap_margin = HYBRID_CONFIDENCE_THRESHOLD, GAP_MARGIN
+        else:
+            self.threshold, self.gap_margin = CONFIDENCE_THRESHOLD, 0.0
+
+    def _fused_row_scores(self, question: str) -> tuple[NDArray[np.float32], NDArray[np.intp]]:
+        """Per-row fused score and the index (into `_variants`) of each row's best variant."""
+        if self._embeddings is None or self._lexical is None:
+            return np.zeros(0, dtype=np.float32), np.zeros(0, dtype=np.intp)
+        question = _correct_typos(question, self._vocabulary)
+        query_vec = self._backend.encode([question])[0]
+        cosine = _cosine_similarity(query_vec, self._embeddings)
+        w = self._lexical_weight
+        fused = w * cosine + (1.0 - w) * self._lexical.scores(question)
+        scores = np.full(len(self._examples), -np.inf, dtype=np.float32)
+        best = np.zeros(len(self._examples), dtype=np.intp)
+        for variant, row in enumerate(self._variant_rows.tolist()):
+            if fused[variant] > scores[row]:
+                scores[row] = fused[variant]
+                best[row] = variant
+        return scores, best
 
     def search(self, question: str, top_k: int = 3) -> list[tuple[NlpExample, float]]:
         """Return up to *top_k* (example, score) pairs, best match first."""
         if not self._examples or self._embeddings is None:
             return []
-        query_vec = self._backend.encode([question])[0]
-        scores = _cosine_similarity(query_vec, self._embeddings)
-        ranked = sorted(zip(self._examples, scores.tolist(), strict=True), key=lambda p: -p[1])
+        scores, best = self._fused_row_scores(question)
+        order = np.argsort(-scores, kind="stable")
+        ranked = [(self._examples[i], float(scores[i])) for i in order]
+        if self._reranker is not None:
+            head = order[: max(RERANK_TOP_K, top_k)]
+            try:
+                rescored = self._reranker.score([(question, self._variants[best[i]]) for i in head])
+            except Exception as exc:  # model missing offline, download failure, ...
+                self._warn_rerank_unavailable(exc)
+                self._reranker = None
+                self._set_acceptance()
+            else:
+                ranked = sorted(
+                    ((self._examples[i], s) for i, s in zip(head, rescored, strict=True)),
+                    key=lambda p: -p[1],
+                )
+        if self._contrast_guard:
+            ranked = apply_contrast_guard(question, ranked)
         return ranked[:top_k]
 
+    def _warn_rerank_unavailable(self, exc: Exception) -> None:
+        if not self._rerank_warned:
+            self._rerank_warned = True
+            print(
+                f"re-ranker unavailable ({type(exc).__name__}); using fused scores", file=sys.stderr
+            )
+
     def is_confident(self, score: float) -> bool:
-        """Whether *score* clears `CONFIDENCE_THRESHOLD`."""
-        return score >= CONFIDENCE_THRESHOLD
+        """Whether *score* clears the confidence threshold of the active scoring scale."""
+        return score >= self.threshold
+
+    def accepts(
+        self, ranked: list[tuple[NlpExample, float]] | tuple[tuple[NlpExample, float], ...]
+    ) -> bool:
+        """Accept iff the top score is confident and leads the runner-up by `gap_margin`."""
+        if not ranked or not self.is_confident(ranked[0][1]):
+            return False
+        return len(ranked) < 2 or ranked[0][1] - ranked[1][1] >= self.gap_margin
+
+
+def hybrid_retriever_factory(
+    backend: Backend,
+    *,
+    rerank: bool = False,
+    lexical_weight: float = LEXICAL_WEIGHT,
+    reranker: Reranker | None = None,
+    contrast_guard: bool = True,
+) -> Callable[[list[NlpExample]], CatalogRetriever]:
+    """Retriever factory for `acp ask` and the eval: hybrid fusion, plus the re-ranker if wanted."""
+    active = (reranker or LocalCrossEncoder()) if rerank else None
+    return lambda scoped: CatalogRetriever(
+        scoped,
+        backend,
+        reranker=active,
+        lexical_weight=lexical_weight,
+        contrast_guard=contrast_guard,
+    )
 
 
 def load_examples(rows: list[dict[str, Any]]) -> list[NlpExample]:
@@ -342,6 +655,7 @@ def load_examples(rows: list[dict[str, Any]]) -> list[NlpExample]:
                 description=None if row.get("description") is None else str(row["description"]),
                 tags=tuple(tags),
                 slots=slots,
+                paraphrases=tuple(row.get("paraphrases") or ()),
             )
         )
     return examples
@@ -711,7 +1025,7 @@ def resolve_ask(
             **extra,
         )
 
-    if not retriever.is_confident(top_score):
+    if not retriever.accepts(ranked):
         return decide("low_confidence")
 
     unbindable = check_bindable(top_example, slots)

@@ -27,12 +27,15 @@ import yaml
 
 from .db import connect, fetch_all
 from .nlp import (
+    LEXICAL_WEIGHT,
     AskDecision,
     Backend,
     CatalogRetriever,
     NlpExample,
+    Reranker,
     UnboundFilterError,
     UnsafeQueryError,
+    hybrid_retriever_factory,
     load_examples,
     resolve_ask,
 )
@@ -139,7 +142,7 @@ def fetch_catalog(database_url: str) -> list[NlpExample]:
     with connect(database_url) as conn:
         rows = fetch_all(
             conn,
-            "SELECT example_id, question, sql_text, description, tags, slots "
+            "SELECT example_id, question, sql_text, description, tags, slots, paraphrases "
             "FROM claude.nlp_examples",
         )
     return load_examples(rows)
@@ -233,8 +236,16 @@ def run_cases(
     ]
 
 
-def default_retriever_factory(backend: Backend) -> RetrieverFactory:
-    return lambda scoped: CatalogRetriever(scoped, backend)
+def default_retriever_factory(
+    backend: Backend,
+    *,
+    rerank: bool = False,
+    lexical_weight: float = LEXICAL_WEIGHT,
+    contrast_guard: bool = True,
+) -> RetrieverFactory:
+    return hybrid_retriever_factory(
+        backend, rerank=rerank, lexical_weight=lexical_weight, contrast_guard=contrast_guard
+    )
 
 
 # --- metrics ---------------------------------------------------------------
@@ -384,10 +395,14 @@ class _FloorRetriever(CatalogRetriever):
     def is_confident(self, score: float) -> bool:
         return True
 
+    def accepts(self, ranked: Sequence[tuple[NlpExample, float]]) -> bool:
+        return True
 
-def redecide(floor: AskDecision, threshold: float) -> AskDecision:
-    """What *floor* (a decision made with no threshold) becomes at *threshold*."""
-    if floor.outcome in ("accept", "unbindable") and floor.score < threshold:
+
+def redecide(floor: AskDecision, threshold: float, gap_margin: float = 0.0) -> AskDecision:
+    """What *floor* (a decision made with no threshold) becomes at *threshold* and *gap_margin*."""
+    gap = floor.ranked[0][1] - floor.ranked[1][1] if len(floor.ranked) > 1 else math.inf
+    if floor.outcome in ("accept", "unbindable") and (floor.score < threshold or gap < gap_margin):
         return AskDecision(
             "low_confidence",
             floor.example,
@@ -402,6 +417,7 @@ def redecide(floor: AskDecision, threshold: float) -> AskDecision:
 @dataclass(frozen=True)
 class SweepRow:
     threshold: float
+    gap_margin: float
     accuracy: float
     wrong_accept: float
     over_refusal: float
@@ -415,7 +431,11 @@ def tune(
     cases: Sequence[EvalCase] | None = None,
     max_wrong_accept: float = 0.05,
     cache_dir: Path | None = None,
-) -> tuple[list[SweepRow], float | None]:
+    gap_margins: Sequence[float] = (0.0,),
+    reranker: Reranker | None = None,
+    lexical_weight: float = LEXICAL_WEIGHT,
+    contrast_guard: bool = True,
+) -> tuple[list[SweepRow], tuple[float, float] | None]:
     """Sweep the confidence threshold on the tune split and pick one.
 
     Reads only `tune.yaml` (via `load_tune_cases`). Retrieval runs once per case
@@ -427,17 +447,25 @@ def tune(
     tune_cases = list(cases) if cases is not None else load_tune_cases()
 
     def floor_factory(scoped: list[NlpExample]) -> CatalogRetriever:
-        return _FloorRetriever(scoped, backend, cache_dir=cache_dir)
+        return _FloorRetriever(
+            scoped,
+            backend,
+            cache_dir=cache_dir,
+            reranker=reranker,
+            lexical_weight=lexical_weight,
+            contrast_guard=contrast_guard,
+        )
 
     floors = [(case, decide(case.question, examples, floor_factory)) for case in tune_cases]
     rows: list[SweepRow] = []
     for threshold in thresholds:
-        scored = [
-            Scored(case, score_case(d := redecide(floor, threshold), case), d)
-            for case, floor in floors
-        ]
-        m = compute_metrics(scored)
-        rows.append(SweepRow(threshold, m.accuracy, m.wrong_accept, m.over_refusal))
+        for gap_margin in gap_margins:
+            scored = [
+                Scored(case, score_case(d := redecide(floor, threshold, gap_margin), case), d)
+                for case, floor in floors
+            ]
+            m = compute_metrics(scored)
+            rows.append(SweepRow(threshold, gap_margin, m.accuracy, m.wrong_accept, m.over_refusal))
     eligible = [r for r in rows if r.wrong_accept <= max_wrong_accept]
-    best = max(eligible, key=lambda r: (r.accuracy, r.threshold), default=None)
-    return rows, None if best is None else best.threshold
+    best = max(eligible, key=lambda r: (r.accuracy, r.threshold, r.gap_margin), default=None)
+    return rows, None if best is None else (best.threshold, best.gap_margin)

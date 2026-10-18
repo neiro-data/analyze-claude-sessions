@@ -49,6 +49,7 @@ from analyze_claude_sessions.ask_eval import (
 from analyze_claude_sessions.config import get_settings
 from analyze_claude_sessions.nlp import (
     DEFAULT_MODEL_NAME,
+    LEXICAL_WEIGHT,
     Backend,
     CatalogRetriever,
     LocalEmbeddingBackend,
@@ -171,7 +172,9 @@ def _run_model(
     embed_dim = int(warm.shape[1])
 
     # No cache_dir on purpose: cache hits would skew the load/encode timings.
-    retriever = CatalogRetriever(examples, backend)
+    retriever = CatalogRetriever(
+        examples, backend, lexical_weight=LEXICAL_WEIGHT, contrast_guard=True
+    )
 
     pairs = paraphrase_pairs(eval_data)
 
@@ -245,7 +248,12 @@ def _run_model(
     if not quick:
         real_questions = synthetic_catalog(1_000, seed)
         build_start = time.perf_counter()
-        real_retriever = CatalogRetriever(build_catalog_examples(real_questions), backend)
+        real_retriever = CatalogRetriever(
+            build_catalog_examples(real_questions),
+            backend,
+            lexical_weight=LEXICAL_WEIGHT,
+            contrast_guard=True,
+        )
         build_time = time.perf_counter() - build_start
         rng = random.Random(seed)  # noqa: S311
         latencies = [_time_search(real_retriever, rng.choice(real_questions)) for _ in range(15)]
