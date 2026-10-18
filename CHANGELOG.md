@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.6.0...v0.7.0) (2026-10-18)
+
+
+### Features
+
+* **ask:** add near-miss catalog rows (sql/022) and re-baseline ask eval ([2b428b0](https://github.com/neiro-data/analyze-claude-sessions/commit/2b428b0728230eef37b97f9744a9e2f41539f8ba))
+* **ask:** add near-miss catalog rows (sql/022) and re-baseline ask eval ([8f6a80a](https://github.com/neiro-data/analyze-claude-sessions/commit/8f6a80abe1c3b8508f3c6eb5969c068275f8558c))
+
+
+### Bug Fixes
+
+* **ask:** bind postgres to loopback, detect owner role via pg_roles, bound top-N limit ([b69ce3a](https://github.com/neiro-data/analyze-claude-sessions/commit/b69ce3a9fd1aab61fdedd0d69852147094a95340))
+* **ask:** bind postgres to loopback, detect owner role via pg_roles, bound top-N limit ([72ceb20](https://github.com/neiro-data/analyze-claude-sessions/commit/72ceb20a998d5ed8bbeb49dcd652e51e02521845))
+
 ## [0.6.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.5.0...v0.6.0) (2026-10-18)
 
 
