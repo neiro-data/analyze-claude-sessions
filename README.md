@@ -113,7 +113,7 @@ The opt-in LLM mode (`--llm`) retrieves catalog examples and asks Claude to writ
 This mode sends your question, the examples and the schema to the Anthropic API;
 `--summarize` also sends up to 50 result rows.
 
-See **[scripts-guide.md — Ask in plain English](scripts-guide.md#wip-ask-in-plain-english-acp-ask)**
+See **[scripts-guide.md — Ask in plain English](scripts-guide.md#ask-in-plain-english-acp-ask)**
 for commands and how the matching works.
 
 ### Scheduled ingest (macOS / launchd) - Optional

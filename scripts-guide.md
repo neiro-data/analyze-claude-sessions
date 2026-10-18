@@ -132,7 +132,7 @@ launchctl list | grep com.analyze-claude-sessions.ingest
 launchctl start com.analyze-claude-sessions.ingest   # run once, right now
 ```
 
-### [WIP] Ask in plain English (`acp ask`)
+### Ask in plain English (`acp ask`)
 
 > **Status:** optional, in development. Needs the `nlp` dependency group. Two modes:
 > catalog mode (default, offline, no generated SQL) and LLM mode (opt-in `--llm`, calls the
