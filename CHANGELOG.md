@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.6.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.5.0...v0.6.0) (2026-10-18)
+
+
+### Features
+
+* **ask-eval:** end-to-end ask decision eval with tune/test splits and baseline ([22f659b](https://github.com/neiro-data/analyze-claude-sessions/commit/22f659be2f10caa5778071d565e36cdaea81802a))
+* **ask-eval:** end-to-end ask decision eval with tune/test splits and baseline ([7748a99](https://github.com/neiro-data/analyze-claude-sessions/commit/7748a9926be29eec869be5023de39aafc1c59911))
+* **ask-retrieval:** paraphrases, hybrid BM25, typo correction, gap check, contrast guard ([199e8e8](https://github.com/neiro-data/analyze-claude-sessions/commit/199e8e885eae7ed4f8223c8b9d672edf73b614f6))
+* **ask-retrieval:** paraphrases, hybrid BM25, typo correction, gap check, contrast guard ([4a6f78c](https://github.com/neiro-data/analyze-claude-sessions/commit/4a6f78c15edc029c8cfcfc2aa128fc9e0cc21e59))
+* **ask:** optional filters, closed date ranges, cost rows, read-only ask role ([f536189](https://github.com/neiro-data/analyze-claude-sessions/commit/f536189f234483091fe45af971828346f1e54372))
+* **ask:** optional filters, closed date ranges, cost rows, read-only ask role ([27c6352](https://github.com/neiro-data/analyze-claude-sessions/commit/27c6352ef1362e08b1b06e3d6419cfa7cc2c66f1))
+* **rag-stress:** compare embedding models with near-miss and operating-point metrics ([80854b5](https://github.com/neiro-data/analyze-claude-sessions/commit/80854b5488904567932b9208125aee7c6977b30b))
+
+
+### Bug Fixes
+
+* **ask-eval:** use renamed ask_stress alias in new tests ([882b8eb](https://github.com/neiro-data/analyze-claude-sessions/commit/882b8eb71f55d2738fdd3517f23ff7bd68d1f432))
+
+
+### Documentation
+
+* **upgrade:** label copied volumes so Compose stops warning ([3c0224c](https://github.com/neiro-data/analyze-claude-sessions/commit/3c0224c3b9dcc0c3a3f28080f87b61045d9d0805))
+* **upgrade:** label copied volumes so Compose stops warning ([ab4db3d](https://github.com/neiro-data/analyze-claude-sessions/commit/ab4db3d17c23e7aad4e6b59b3638fc2cc376a25e))
+
 ## [0.5.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.4.1...v0.5.0) (2026-10-18)
 
 
