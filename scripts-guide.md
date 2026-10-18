@@ -161,15 +161,15 @@ the closest candidate questions instead of guessing.
 is parsed for the same filters (`session_id=<id>` or a bare UUID; `since 2026-01[-15]`;
 `last N days`; `last month`, meaning the previous calendar month, not a trailing 30-day
 window; a known project or model name; `top N`). If the best-matching row can't bind a
-filter your question carries — e.g. "tokens per model **last month**" matching the all-time
-"tokens per model" template — `ask` **refuses** rather than silently running the unfiltered
+filter your question carries — e.g. "which model is used least **last month**" matching the
+all-time "which model is used least" template — `ask` **refuses** rather than silently running the unfiltered
 query, and prints the near-matches instead:
 
 ```
-$ uv run acp ask "tokens per model last month"
+$ uv run acp ask "which model is used least last month"
 Refusing: your question filters by since ('2026-02-01') but the closest match
-"how many tokens were spent per model" has no such filter. Try one of these instead:
-  [0.71] how many tokens were spent per model
+"which model is used least" has no such filter. Try one of these instead:
+  [0.71] which model is used least
   ...
 ```
 
@@ -177,6 +177,27 @@ The embedding model (numpy, sentence-transformers) lives in the optional `nlp` d
 group. The app image ships without it, so `ask` prints an install hint if it is missing;
 enable it with a one-time `uv sync --group nlp` (locally) or by rebuilding the image with
 that group. Every other `acp` command works without it.
+
+#### Filters
+
+Aggregate rows take optional `since`/`until`/`project`/`model` filters (declared twice in
+`slots`, once per `%s`, with `optional: true` and a NULL default = no filter), and "top N"
+rows take an optional `limit` (default 10). "last month" binds a closed range: `since` =
+first day of the previous month, `until` = first day of this one (exclusive). "last N days"
+and "since X" set only `since`. A filter the matched row doesn't declare still refuses.
+
+```bash
+uv run acp ask "top 3 sessions by total tokens"
+uv run acp ask "tokens per model last month"
+uv run acp ask "how much money did I spend"   # cost rows; unpriced calls are counted, not zeroed
+```
+
+#### Read-only role
+
+`acp ask` connects with `ASK_DATABASE_URL` (the `ask_reader` role from
+`sql/019_ask_reader_role.sql`: SELECT-only, read-only sessions, 15s statement timeout).
+Rotate its placeholder password after first init. If the variable is unset, `ask` falls back
+to `DATABASE_URL` (the owner role) and prints a one-line dim warning.
 
 #### Retrieval quality checks
 

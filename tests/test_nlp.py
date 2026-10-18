@@ -24,6 +24,7 @@ from analyze_claude_sessions.nlp import (
     SlotSpec,
     UnboundFilterError,
     UnsafeQueryError,
+    build_params,
     check_bindable,
     count_placeholders,
     ensure_read_only,
@@ -31,6 +32,7 @@ from analyze_claude_sessions.nlp import (
     extract_slots,
     filter_examples,
     load_examples,
+    resolve_ask,
 )
 
 runner = CliRunner()
@@ -205,6 +207,7 @@ def test_extract_slots_last_month_is_previous_calendar_month() -> None:
     slots, cleaned = extract_slots("tokens per model last month", today=date(2026, 3, 15))
 
     assert slots["since"] == date(2026, 2, 1)
+    assert slots["until"] == date(2026, 3, 1)
     assert "last month" not in cleaned
 
 
@@ -212,6 +215,7 @@ def test_extract_slots_last_month_across_year_boundary() -> None:
     slots, _cleaned = extract_slots("tokens last month", today=date(2026, 1, 15))
 
     assert slots["since"] == date(2025, 12, 1)
+    assert slots["until"] == date(2026, 1, 1)
 
 
 def test_extract_slots_project_whole_token_match() -> None:
@@ -788,14 +792,18 @@ def test_load_examples_maps_rows() -> None:
 # exact file that ships to both fresh and migrated installs.
 # --------------------------------------------------------------------------
 
-_CATALOG_SQL_PATH = Path(__file__).parent.parent / "sql" / "005_nlp_catalog.sql"
+_SQL_DIR = Path(__file__).parent.parent / "sql"
+_CATALOG_SQL_PATH = _SQL_DIR / "005_nlp_catalog.sql"
+_FILTERS_SQL_PATH = _SQL_DIR / "018_nlp_optional_filters_and_cost.sql"
 
 
-def _parse_catalog_rows() -> list[tuple[str, list[dict[str, str]]]]:
-    """Return (sql_text, slots) for every row in the 005 catalog INSERT."""
+def _parse_catalog_rows(
+    path: Path = _CATALOG_SQL_PATH,
+) -> list[tuple[str, list[dict[str, Any]]]]:
+    """Return (sql_text, slots) for every row in a catalog INSERT file."""
     import json
 
-    text = _CATALOG_SQL_PATH.read_text()
+    text = path.read_text()
     _, rest = text.split("VALUES\n", 1)
     body, _ = rest.rsplit("\nON CONFLICT", 1)
     rows = []
@@ -824,6 +832,166 @@ def test_catalog_slot_count_matches_placeholder_count() -> None:
             f"placeholder/slot mismatch ({count_placeholders(sql_text)} vs "
             f"{len(slots)} slots) in: {sql_text[:80]!r}"
         )
+
+
+def test_filters_catalog_slot_count_matches_placeholder_count() -> None:
+    rows = _parse_catalog_rows(_FILTERS_SQL_PATH)
+    assert rows
+    for sql_text, slots in rows:
+        assert count_placeholders(sql_text) == len(slots), (
+            f"placeholder/slot mismatch ({count_placeholders(sql_text)} vs "
+            f"{len(slots)} slots) in: {sql_text[:80]!r}"
+        )
+        ensure_read_only(sql_text)
+
+
+def test_filters_catalog_since_rows_also_declare_until() -> None:
+    for sql_text, slots in _parse_catalog_rows(_FILTERS_SQL_PATH):
+        types = {s["type"] for s in slots}
+        assert ("since" in types) == ("until" in types), sql_text[:80]
+
+
+def test_filters_catalog_optional_slots_have_null_or_int_defaults() -> None:
+    for _sql, slots in _parse_catalog_rows(_FILTERS_SQL_PATH):
+        for slot in slots:
+            if slot["type"] == "limit":
+                assert slot["optional"] and slot["default"] == 10
+            elif slot["type"] != "session_id":
+                assert slot["optional"] and slot["default"] is None
+
+
+# --------------------------------------------------------------------------
+# build_params / resolve_ask
+# --------------------------------------------------------------------------
+
+_LIMIT_SLOT = SlotSpec(name="limit", type="limit", default=10, optional=True)
+_OPT_SINCE = (
+    SlotSpec(name="since", type="since", optional=True),
+    SlotSpec(name="since", type="since", optional=True),
+)
+
+
+def _limit_example(question: str = "top 10 sessions by total tokens") -> NlpExample:
+    return NlpExample(
+        example_id=1,
+        question=question,
+        sql_text="SELECT 1 FROM t LIMIT %s::int",
+        slots=(_LIMIT_SLOT,),
+    )
+
+
+def test_build_params_uses_extracted_value() -> None:
+    assert build_params(_limit_example(), {"limit": 5}) == (5,)
+
+
+def test_build_params_optional_falls_back_to_default() -> None:
+    assert build_params(_limit_example(), {}) == (10,)
+
+
+def test_build_params_optional_since_binds_none_twice() -> None:
+    example = NlpExample(example_id=1, question="q", sql_text="x", slots=_OPT_SINCE)
+    assert build_params(example, {}) == (None, None)
+    assert build_params(example, {"since": date(2026, 2, 1)}) == (
+        date(2026, 2, 1),
+        date(2026, 2, 1),
+    )
+
+
+def test_build_params_required_slot_missing_raises_unbound_filter_error() -> None:
+    example = NlpExample(
+        example_id=1,
+        question="q",
+        sql_text="x = %s",
+        slots=(SlotSpec(name="session_id", type="session_id"),),
+    )
+    with pytest.raises(UnboundFilterError) as exc_info:
+        build_params(example, {})
+    assert exc_info.value.unbindable == ["session_id"]
+
+
+def test_resolve_ask_top_n_accepts_with_limit_param(tmp_path: Path) -> None:
+    example = _limit_example()
+    backend = _FakeBackend({}, default=[1.0, 0.0])
+    for question, expected in [
+        ("top 10 sessions by total tokens", (10,)),
+        ("top 5 sessions by total tokens", (5,)),
+        ("sessions by total tokens", (10,)),
+    ]:
+        decision = resolve_ask(
+            question,
+            [example],
+            lambda scoped: CatalogRetriever(scoped, backend, cache_dir=tmp_path),
+            known_projects=[],
+            known_models=[],
+            top_k=3,
+        )
+        assert decision.outcome == "accept"
+        assert decision.params == expected
+
+
+def test_resolve_ask_last_month_binds_closed_range(tmp_path: Path) -> None:
+    example = NlpExample(
+        example_id=1,
+        question="tokens per model",
+        sql_text="x %s %s %s %s",
+        slots=(
+            *_OPT_SINCE,
+            SlotSpec(name="until", type="until", optional=True),
+            SlotSpec(name="until", type="until", optional=True),
+        ),
+    )
+    backend = _FakeBackend({}, default=[1.0, 0.0])
+    decision = resolve_ask(
+        "tokens per model last month",
+        [example],
+        lambda scoped: CatalogRetriever(scoped, backend, cache_dir=tmp_path),
+        known_projects=[],
+        known_models=[],
+        top_k=3,
+        today=date(2026, 3, 15),
+    )
+    assert decision.outcome == "accept"
+    feb, mar = date(2026, 2, 1), date(2026, 3, 1)
+    assert decision.params == (feb, feb, mar, mar)
+
+
+def test_resolve_ask_undeclared_filter_is_unbindable(tmp_path: Path) -> None:
+    backend = _FakeBackend({}, default=[1.0, 0.0])
+    decision = resolve_ask(
+        "sessions last month",
+        [_limit_example()],
+        lambda scoped: CatalogRetriever(scoped, backend, cache_dir=tmp_path),
+        known_projects=[],
+        known_models=[],
+        top_k=3,
+        today=date(2026, 3, 15),
+    )
+    assert decision.outcome == "unbindable"
+    assert set(decision.unbindable) == {"since", "until"}
+
+
+def test_resolve_ask_low_confidence_and_no_examples(tmp_path: Path) -> None:
+    backend = _FakeBackend({"sessions": [-1.0, 0.0]}, default=[1.0, 0.0])
+    low = resolve_ask(
+        "sessions",
+        [_limit_example()],
+        lambda scoped: CatalogRetriever(scoped, backend, cache_dir=tmp_path),
+        known_projects=[],
+        known_models=[],
+        top_k=3,
+    )
+    assert low.outcome == "low_confidence"
+    assert low.example is not None
+
+    none = resolve_ask(
+        "sessions",
+        [],
+        lambda scoped: CatalogRetriever(scoped, backend, cache_dir=tmp_path),
+        known_projects=[],
+        known_models=[],
+        top_k=3,
+    )
+    assert none.outcome == "no_examples"
 
 
 # --------------------------------------------------------------------------
@@ -861,7 +1029,11 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         cli_mod,
         "get_settings",
-        lambda: type("S", (), {"database_url": "postgresql://fake"})(),
+        lambda: type(
+            "S",
+            (),
+            {"database_url": "postgresql://fake", "ask_database_url": "postgresql://fake-ask"},
+        )(),
     )
     monkeypatch.setattr(cli_mod, "fetch_all", _common_fetch_all)
 
@@ -908,7 +1080,11 @@ def test_ask_cli_refuses_undeclared_time_filter(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(
         cli_mod,
         "get_settings",
-        lambda: type("S", (), {"database_url": "postgresql://fake"})(),
+        lambda: type(
+            "S",
+            (),
+            {"database_url": "postgresql://fake", "ask_database_url": "postgresql://fake-ask"},
+        )(),
     )
     monkeypatch.setattr(cli_mod, "fetch_all", _fetch_all)
     backend = _FakeBackend(
@@ -959,7 +1135,11 @@ def _patch_session_scoped(monkeypatch: pytest.MonkeyPatch, fetch_all_impl: Any) 
     monkeypatch.setattr(
         cli_mod,
         "get_settings",
-        lambda: type("S", (), {"database_url": "postgresql://fake"})(),
+        lambda: type(
+            "S",
+            (),
+            {"database_url": "postgresql://fake", "ask_database_url": "postgresql://fake-ask"},
+        )(),
     )
     monkeypatch.setattr(cli_mod, "fetch_all", fetch_all_impl)
     backend = _FakeBackend(
@@ -1037,3 +1217,53 @@ def test_ask_cli_db_error_caught_and_exits_nonzero(monkeypatch: pytest.MonkeyPat
 
     assert result.exit_code == 1
     assert "Query failed" in result.output
+
+
+# --------------------------------------------------------------------------
+# Live DB: ask_reader role + every catalog row EXPLAINs with defaults bound
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def live_conn() -> Iterator[Any]:
+    from analyze_claude_sessions.config import Settings
+
+    try:
+        connection = psycopg.connect(Settings.from_env().database_url)
+    except psycopg.OperationalError as exc:
+        pytest.skip(f"no live database reachable: {exc}")
+    try:
+        yield connection
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+@pytest.mark.live_db
+def test_ask_reader_is_read_only(live_conn: Any) -> None:
+    live_conn.execute("SET ROLE ask_reader")
+    assert live_conn.execute("SELECT count(*) FROM claude.v_api_call_cost").fetchone() is not None
+    for stmt in (
+        "INSERT INTO claude.nlp_examples (question, sql_text) VALUES ('probe', 'SELECT 1')",
+        "CREATE TABLE claude.ask_probe (x int)",
+        "DELETE FROM claude.projects",
+    ):
+        with pytest.raises(psycopg.errors.Error):
+            live_conn.execute(stmt)
+        live_conn.rollback()
+        live_conn.execute("SET ROLE ask_reader")
+
+
+@pytest.mark.live_db
+def test_every_catalog_row_explains_with_defaults(live_conn: Any) -> None:
+    from psycopg.rows import dict_row
+
+    with live_conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("SELECT example_id, question, sql_text, slots FROM claude.nlp_examples")
+        rows = cur.fetchall()
+    assert rows
+    for example in load_examples(rows):
+        ensure_read_only(example.sql_text)
+        bind = {"session_id": _SESSION_ID}
+        params = build_params(example, bind)
+        live_conn.execute("EXPLAIN " + example.sql_text, params)
