@@ -1,4 +1,4 @@
-"""Slow, real-model RAG stress suite for `CatalogRetriever`.
+"""Slow, real-model ask stress suite for `CatalogRetriever`.
 
 Opt-in, marked `slow`: loads the real SentenceTransformer model (no network
 once cached, but a real model load/embed), so it must never run in the
@@ -10,7 +10,7 @@ Reuses the shared, deterministic perturbation/backend/corpus helpers from
 `analyze_claude_sessions.nlp_stress` -- see that module's docstring. This
 file adds the real-model measurements: perturbation robustness, a
 confidence-threshold sweep, scale/latency, and determinism checks. See also
-`scripts/rag_stress.py`, which runs the same battery and writes a report.
+`scripts/ask_stress.py`, which runs the same battery and writes a report.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Run the real-model RAG stress battery and write a timestamped report.
+"""Run the real-model ask stress battery and write a timestamped report.
 
 Reuses `analyze_claude_sessions.nlp_stress` (perturbations, `FakeHashBackend`,
 `SQL_ADVERSARIAL_CORPUS`, `generate_slot_questions`) and the real
@@ -8,16 +8,16 @@ standalone, runnable report generator rather than a test.
 
 Run:
 
-    uv run --group nlp python scripts/rag_stress.py            # full battery
-    uv run --group nlp python scripts/rag_stress.py --quick    # small/fast sanity run
-    uv run --group nlp python scripts/rag_stress.py -m BAAI/bge-small-en-v1.5   # one other model
-    uv run --group nlp python scripts/rag_stress.py --compare  # MiniLM, bge-small, mpnet
+    uv run --group nlp python scripts/ask_stress.py            # full battery
+    uv run --group nlp python scripts/ask_stress.py --quick    # small/fast sanity run
+    uv run --group nlp python scripts/ask_stress.py -m BAAI/bge-small-en-v1.5   # one other model
+    uv run --group nlp python scripts/ask_stress.py --compare  # MiniLM, bge-small, mpnet
 
 `--model/-m` is repeatable; `--compare` is shorthand for all of `COMPARISON_MODELS`.
-Run `make rag-stress-prefetch` once first so every model is cached (the comparison
+Run `make ask-stress-prefetch` once first so every model is cached (the comparison
 refuses to start with an uncached model, see `_preflight`).
 
-Writes `data/reports/rag_stress_<timestamp>.md` and `.csv` (CSV leads with a `model` column).
+Writes `data/reports/ask_stress_<timestamp>.md` and `.csv` (CSV leads with a `model` column).
 """
 
 from __future__ import annotations
@@ -488,7 +488,7 @@ def render_markdown(report: Report) -> str:
     multi = len(report.models) > 1
     names = ", ".join(f"`{m.model_name}`" for m in report.models)
     lines = [
-        "# RAG stress report",
+        "# ask stress report",
         "",
         f"- {'models' if multi else 'model'}: {names}",
         f"- catalog size: {report.catalog_size}",
@@ -651,7 +651,7 @@ def _preflight(model_names: list[str]) -> None:
     if missing:
         typer.echo(
             f"Models not in the local HF cache: {', '.join(missing)}.\n"
-            "Run `make rag-stress-prefetch` first (downloads each model in its own process).",
+            "Run `make ask-stress-prefetch` first (downloads each model in its own process).",
             err=True,
         )
         raise typer.Exit(code=2)
@@ -674,7 +674,7 @@ def main(
         bool, typer.Option(help="Compare all of COMPARISON_MODELS (same as repeating --model).")
     ] = False,
 ) -> None:
-    """Run the RAG stress battery and write a timestamped markdown+CSV report."""
+    """Run the ask stress battery and write a timestamped markdown+CSV report."""
     model_names = _resolve_models(model, compare)
     if BACKEND_FACTORY is LocalEmbeddingBackend:
         _preflight(model_names)
@@ -683,8 +683,8 @@ def main(
     )
     out.mkdir(parents=True, exist_ok=True)
 
-    md_path = out / f"rag_stress_{report.timestamp}.md"
-    csv_path = out / f"rag_stress_{report.timestamp}.csv"
+    md_path = out / f"ask_stress_{report.timestamp}.md"
+    csv_path = out / f"ask_stress_{report.timestamp}.csv"
     md_path.write_text(render_markdown(report))
     write_csv(report, csv_path)
 

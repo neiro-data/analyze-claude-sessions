@@ -1,4 +1,4 @@
-# Expanded out-of-catalog / stress corpus for the *slow* RAG stress suite
+# Expanded out-of-catalog / stress corpus for the *slow* ask stress suite
 # (tests/test_nlp_stress_slow.py) and the reporting script. Not used by the
 # fast tests/test_nlp_stress.py, which is model-free and does not embed
 # anything. See tests/data/nlp_eval.yaml for the paraphrase/recall corpus

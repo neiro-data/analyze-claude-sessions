@@ -31,7 +31,7 @@ docker/postgres/Dockerfile   two-stage pg_parquet build
 docker/app/Dockerfile        python:3.12-slim + bash + jq + uv
 docker-compose.yml           postgres service + app CLI (profile: cli)
 sql/                         001 extensions … 013 duplicated tokens (see sql/ for full list)
-scripts/                     vendored per-call timing report, DuckDB ad-hoc, RAG stress
+scripts/                     vendored per-call timing report, DuckDB ad-hoc, ask stress
 src/analyze_claude_sessions/
   config.py                  env-driven settings
   discovery.py                find transcripts (main + subagent)

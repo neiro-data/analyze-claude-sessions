@@ -134,7 +134,7 @@ launchctl list | grep com.analyze-claude-sessions.ingest
 launchctl start com.analyze-claude-sessions.ingest   # run once, right now
 ```
 
-### [WIP] RAG / NLP (`acp ask`)
+### [WIP] Natural-language queries (`acp ask`)
 
 > **Status:** optional, in development. Needs the `nlp` dependency group.
 
@@ -210,12 +210,12 @@ entry, plus out-of-catalog questions) and prints recall@1, recall@3, and a false
 rate. Marked `slow` and excluded from `make check` / the default `pytest` run since it loads
 a real model; run it by hand when changing retrieval and compare against the last printed
 numbers. The eval YAML also has a `near_miss` section (questions that look like a catalog
-row but that no row answers); it is ignored here and used by `scripts/rag_stress.py`.
+row but that no row answers); it is ignored here and used by `scripts/ask_stress.py`.
 
-#### RAG stress suite (opt-in)
+#### ask stress suite (opt-in)
 
 A heavier, real-model stress battery lives in `tests/test_nlp_stress_slow.py` (all tests
-marked `slow`) and `scripts/rag_stress.py`. It measures perturbation robustness (typos,
+marked `slow`) and `scripts/ask_stress.py`. It measures perturbation robustness (typos,
 casing, punctuation, filler, truncation, unicode noise, …) against the clean baseline,
 sweeps `CONFIDENCE_THRESHOLD` from 0.30–0.75 against the in-catalog/out-of-catalog corpora,
 checks retrieval latency at 100/1k/10k rows, and re-runs the `ensure_read_only` adversarial
@@ -225,29 +225,29 @@ escaping edge cases can't slip past it.
 
 ```bash
 uv run --group nlp pytest -m slow tests/test_nlp_stress_slow.py -s
-uv run --group nlp python scripts/rag_stress.py            # full battery, writes data/reports/
-uv run --group nlp python scripts/rag_stress.py --quick    # small/fast sanity run
+uv run --group nlp python scripts/ask_stress.py            # full battery, writes data/reports/
+uv run --group nlp python scripts/ask_stress.py --quick    # small/fast sanity run
 ```
 
-or `make rag-stress` for the full report. It's excluded from `make check` and the default
+or `make ask-stress` for the full report. It's excluded from `make check` and the default
 `pytest` run — same reasons as the eval above — and its reports (`data/reports/`) are
 gitignored scratch output, not tracked artifacts.
 
-**Comparing embedding models.** `scripts/rag_stress.py` runs the retrieval part of the
+**Comparing embedding models.** `scripts/ask_stress.py` runs the retrieval part of the
 battery for one or more local sentence-transformers models:
 
 ```bash
-make rag-stress-prefetch                                   # one-time download, one process per model
-make rag-stress-compare                                    # --compare: MiniLM, bge-small, mpnet
-make rag-stress RAG_MODELS="BAAI/bge-small-en-v1.5"        # extra model(s) via the Makefile
-uv run --group nlp python scripts/rag_stress.py -m all-mpnet-base-v2 -m BAAI/bge-small-en-v1.5
+make ask-stress-prefetch                                   # one-time download, one process per model
+make ask-stress-compare                                    # --compare: MiniLM, bge-small, mpnet
+make ask-stress ASK_MODELS="BAAI/bge-small-en-v1.5"        # extra model(s) via the Makefile
+uv run --group nlp python scripts/ask_stress.py -m all-mpnet-base-v2 -m BAAI/bge-small-en-v1.5
 ```
 
 `--model/-m` is repeatable (order kept, duplicates dropped); with no flags only
 `all-MiniLM-L6-v2` runs, as before. Downloads are about 90 MB (MiniLM), 130 MB (bge-small)
 and 420 MB (mpnet). A multi-model run refuses to start (exit code 2) if any model is not
 cached and `HF_HUB_OFFLINE` is not set yourself, because the backend flips the process
-offline after the first cached load; run `make rag-stress-prefetch` first. Models load one
+offline after the first cached load; run `make ask-stress-prefetch` first. Models load one
 at a time and are released before the next.
 
 The report has a comparison table (one row per model), a per-model near-miss table, then

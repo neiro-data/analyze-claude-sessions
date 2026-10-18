@@ -100,14 +100,15 @@ Full table/view reference, the ingestion pipeline diagram, and the last verified
 
 These features are opt-in. They are not part of the default setup, and they can change.
 
-### RAG / NLP (`acp ask`)
+### Natural-language queries (`acp ask`)
 
 `acp ask` answers natural-language questions ("how many tokens were spent per model?") by
 matching them against a curated SQL catalog with local sentence embeddings — fully offline,
-no API key. It needs the optional `nlp` dependency group (`uv sync --group nlp`). A separate
+no API key. It matches your question to a curated catalog of SQL queries and runs the
+matched query. It does not generate SQL. It needs the optional `nlp` dependency group (`uv sync --group nlp`). A separate
 opt-in stress suite checks retrieval quality and robustness.
 
-See **[scripts-guide.md — RAG / NLP](scripts-guide.md#wip-rag--nlp-acp-ask)** for commands and
+See **[scripts-guide.md — Natural-language queries](scripts-guide.md#wip-natural-language-queries-acp-ask)** for commands and
 how the matching works.
 
 ### Scheduled ingest (macOS / launchd) - Optional
@@ -133,7 +134,7 @@ docs/images/                  README screenshots
 docker/                       postgres (pg_parquet build) + app Dockerfiles, docker/grafana provisioning
 docker-compose.yml             postgres service, app CLI (profile: cli), grafana (profile: dashboard)
 sql/                           schema, views, and migrations (001–016)
-scripts/                       vendored report script, DuckDB ad-hoc queries, RAG stress harness
+scripts/                       vendored report script, DuckDB ad-hoc queries, ask stress harness
 src/analyze_claude_sessions/   ingestion pipeline + `acp` CLI (see README_AGENT.md for a file map)
 tests/                         test suite; the default run needs no database (live_db tests are opt-in)
 data/                          csv/, parquet/, backups/, reports/ — gitignored; reference/ (pricing CSV) is tracked
