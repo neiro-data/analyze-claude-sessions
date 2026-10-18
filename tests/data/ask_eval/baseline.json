@@ -1,59 +1,58 @@
 {
   "model_name": "all-MiniLM-L6-v2",
-  "catalog_hash": "1611a55bbfa99f28",
+  "catalog_hash": "3022f407335d2d5a",
   "threshold": 0.5,
   "metrics": {
     "test": {
       "all": {
         "n": 162,
-        "accuracy": 0.7901,
-        "wrong_accept": 0.0988,
-        "over_refusal": 0.1111,
-        "recall_at_1": 0.9273,
-        "recall_at_3": 1.0,
+        "accuracy": 0.8272,
+        "wrong_accept": 0.0556,
+        "over_refusal": 0.1173,
+        "recall_at_1": 0.9333,
+        "recall_at_3": 0.9917,
         "verdicts": {
-          "correct": 89,
-          "correct_refusal": 39,
-          "wrong_accept": 16,
-          "over_refusal": 18
+          "correct": 98,
+          "correct_refusal": 36,
+          "wrong_accept": 9,
+          "over_refusal": 19
         }
       },
       "paraphrase": {
         "n": 68,
-        "accuracy": 0.75,
+        "accuracy": 0.7353,
         "wrong_accept": 0.0,
-        "over_refusal": 0.25,
+        "over_refusal": 0.2647,
         "recall_at_1": 0.9412,
-        "recall_at_3": 1.0,
+        "recall_at_3": 0.9853,
         "verdicts": {
-          "correct": 51,
-          "over_refusal": 17
+          "correct": 50,
+          "over_refusal": 18
         }
       },
       "near_miss": {
         "n": 20,
-        "accuracy": 0.45,
-        "wrong_accept": 0.55,
+        "accuracy": 0.85,
+        "wrong_accept": 0.15,
         "over_refusal": 0.0,
-        "recall_at_1": 0.8,
+        "recall_at_1": 0.8947,
         "recall_at_3": 1.0,
         "verdicts": {
-          "correct": 8,
-          "correct_refusal": 1,
-          "wrong_accept": 11
+          "correct": 17,
+          "wrong_accept": 3
         }
       },
       "opposite": {
         "n": 12,
-        "accuracy": 0.6667,
-        "wrong_accept": 0.3333,
+        "accuracy": 0.5833,
+        "wrong_accept": 0.4167,
         "over_refusal": 0.0,
         "recall_at_1": 1.0,
         "recall_at_3": 1.0,
         "verdicts": {
-          "correct": 2,
-          "correct_refusal": 6,
-          "wrong_accept": 4
+          "correct": 3,
+          "correct_refusal": 4,
+          "wrong_accept": 5
         }
       },
       "ood": {

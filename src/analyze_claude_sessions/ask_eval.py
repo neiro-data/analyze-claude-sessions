@@ -75,7 +75,11 @@ EVAL_TOP_K = 3
 
 # Matches `(\n    'question',` rows of `INSERT INTO claude.nlp_examples ... VALUES`.
 _CATALOG_QUESTION_RE = re.compile(r"^\(\n    '([^']+)',\n", re.MULTILINE)
-_CATALOG_SQL_FILES = ("005_nlp_catalog.sql", "018_nlp_optional_filters_and_cost.sql")
+_CATALOG_SQL_FILES = (
+    "005_nlp_catalog.sql",
+    "018_nlp_optional_filters_and_cost.sql",
+    "022_nlp_near_miss_rows.sql",
+)
 _TOKEN_RE = re.compile(r"[a-z0-9_]+")
 
 
@@ -130,7 +134,7 @@ def load_tune_cases() -> list[EvalCase]:
 
 
 def catalog_questions_from_sql(sql_dir: Path = SQL_DIR) -> set[str]:
-    """Catalog `question` values seeded by migrations 005 and 018 (no database)."""
+    """Catalog `question` values seeded by migrations 005, 018 and 022 (no database)."""
     questions: set[str] = set()
     for name in _CATALOG_SQL_FILES:
         questions.update(_CATALOG_QUESTION_RE.findall((sql_dir / name).read_text()))
