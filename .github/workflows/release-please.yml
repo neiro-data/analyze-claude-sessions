@@ -11,6 +11,8 @@ on:
       - 'docs/**'
       - 'LICENSE'
       - '.gitignore'
+  # Docs-only merges skip the push trigger; `gh workflow run release-please.yml` catches up.
+  workflow_dispatch:
 
 permissions:
   contents: write
