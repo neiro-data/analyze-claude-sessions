@@ -593,17 +593,69 @@
         "defaults": {
           "unit": "short",
           "custom": {
-            "axisWidth": 80,
-            "axisPlacement": "right"
+            "axisWidth": 80
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "api_calls"
+            },
+            "properties": [
+              {
+                "id": "custom.axisLabel",
+                "value": "API calls"
+              },
+              {
+                "id": "custom.axisWidth",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "tokens_per_call"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "tokens / call"
+              },
+              {
+                "id": "custom.axisWidth",
+                "value": 60
+              },
+              {
+                "id": "displayName",
+                "value": "avg tokens per call"
+              },
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.spanNulls",
+                "value": true
+              }
+            ]
+          }
+        ]
       },
       "targets": [
         {
           "refId": "A",
           "format": "time_series",
-          "rawSql": "SELECT gs AS time, count(c.*) AS api_calls FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small)) GROUP BY gs ORDER BY gs"
+          "rawSql": "SELECT gs AS time, count(c.*) AS api_calls, round(sum(c.total_input_tokens + c.output_tokens)::numeric / NULLIF(count(c.*), 0), 0) AS tokens_per_call FROM generate_series(date_trunc('minute', $__timeFrom()::timestamptz), $__timeTo()::timestamptz, CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END) gs LEFT JOIN claude.api_calls c ON c.called_at >= gs AND c.called_at < gs + CASE WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '10 minutes' THEN interval '1 minute' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '30 minutes' THEN interval '2 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '1 hour' THEN interval '5 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '3 hours' THEN interval '10 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '12 hours' THEN interval '30 minutes' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '2 days' THEN interval '1 hour' WHEN $__timeTo()::timestamptz - $__timeFrom()::timestamptz < interval '7 days' THEN interval '2 hours' ELSE interval '1 day' END AND ('${model:csv}' = '' OR c.model = ANY(string_to_array('${model:csv}', ','))) AND ('${agent:csv}' = '' OR coalesce(nullif(c.agent_type,''),'unknown') = ANY(string_to_array('${agent:csv}', ','))) AND ('$small_sessions' = 'on' OR c.session_id IN (SELECT session_id FROM claude.v_session_size_flags WHERE NOT is_small)) GROUP BY gs ORDER BY gs"
         }
       ]
     },
