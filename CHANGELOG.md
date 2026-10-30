@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.7.0...v0.8.0) (2026-10-28)
+
+
+### Features
+
+* **dashboard:** add avg tokens per call to API calls over time ([2f10cb2](https://github.com/neiro-data/analyze-claude-sessions/commit/2f10cb2693502163a7a81c2dcb611966530145ce))
+* **dashboard:** add avg tokens per call to API calls over time ([146754f](https://github.com/neiro-data/analyze-claude-sessions/commit/146754fdb3eb54637269a672a60dff9a2b2be036))
+
+
+### Documentation
+
+* drop [WIP] from the acp ask heading ([3d2366c](https://github.com/neiro-data/analyze-claude-sessions/commit/3d2366caf9d54f31a5e3a3263272ae4650cc02dd))
+* sync docs with v0.5–v0.7 and name acp ask modes ([9c31944](https://github.com/neiro-data/analyze-claude-sessions/commit/9c31944d264078665596b6ee222cce9a45c94715))
+* sync docs with v0.5–v0.7 and name acp ask modes ([451c18e](https://github.com/neiro-data/analyze-claude-sessions/commit/451c18ea16396123d3208748ad906a874bcdd163))
+
 ## [0.7.0](https://github.com/neiro-data/analyze-claude-sessions/compare/v0.6.0...v0.7.0) (2026-10-18)
 
 
