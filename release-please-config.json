@@ -12,7 +12,12 @@
       "package-name": "analyze-claude-sessions",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "src/analyze_claude_sessions/__init__.py"
+        "src/analyze_claude_sessions/__init__.py",
+        {
+          "type": "toml",
+          "path": "uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='analyze-claude-sessions')].version"
+        }
       ]
     }
   }
